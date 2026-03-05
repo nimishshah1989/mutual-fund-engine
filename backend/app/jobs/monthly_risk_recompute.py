@@ -4,7 +4,7 @@ jobs/monthly_risk_recompute.py
 Scheduled on the 2nd of every month at 3:00 AM IST.
 Performs a full data refresh + complete scoring pipeline recompute:
   Step 1: Ingest all funds (fresh data from Morningstar)
-  Step 2: Run QFS -> FSAS -> CRS pipeline for all categories
+  Step 2: Run full pipeline (QFS -> Shortlist -> FSAS -> Recommend) for all categories
   Step 3: Log tier changes for audit trail
 
 Runs outside FastAPI request context — creates its own DB session.
@@ -31,7 +31,7 @@ async def run_monthly_risk_recompute() -> dict:
 
     Steps:
       1. Ingest all eligible funds from Morningstar (fresh risk data)
-      2. Run full scoring pipeline (QFS -> FSAS -> CRS) for all categories
+      2. Run full scoring pipeline (QFS -> Shortlist -> FSAS -> Recommend) for all categories
       3. Summarise tier changes across all categories
 
     Returns:
@@ -83,7 +83,7 @@ async def run_monthly_risk_recompute() -> dict:
         )
 
         # ============================================================
-        # Step 2: Run full scoring pipeline (QFS -> FSAS -> CRS)
+        # Step 2: Run full scoring pipeline (QFS -> Shortlist -> FSAS -> Recommend)
         # ============================================================
         async with get_standalone_session() as session:
             logger.info("monthly_risk_recompute_scoring_start")

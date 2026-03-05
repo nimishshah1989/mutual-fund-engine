@@ -13,40 +13,28 @@ import ErrorState from "@/components/ErrorState";
 import EmptyState from "@/components/EmptyState";
 
 /* ------------------------------------------------------------------ */
-/*  Sortable column keys                                               */
+/*  Sortable column keys — v2: QFS-based, no CRS                      */
 /* ------------------------------------------------------------------ */
-type SortField = "crs" | "qfs" | "fsas" | "data_completeness_pct";
-
-/* ------------------------------------------------------------------ */
-/*  Categories response shape                                          */
-/* ------------------------------------------------------------------ */
-interface CategoriesResponse {
-  success: boolean;
-  data: string[];
-}
+type SortField = "qfs" | "data_completeness_pct" | "qfs_rank";
 
 /* ------------------------------------------------------------------ */
 /*  Page component                                                     */
 /* ------------------------------------------------------------------ */
-export default function FundScoreboardPage() {
-  /* ----- data state ----- */
+export default function FundUniversePage() {
   const [funds, setFunds] = useState<FundScoreOverview[]>([]);
   const [categories, setCategories] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [totalFunds, setTotalFunds] = useState(0);
 
-  /* ----- filter state ----- */
   const [search, setSearch] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("");
   const [tierFilter, setTierFilter] = useState("");
   const [actionFilter, setActionFilter] = useState("");
 
-  /* ----- sort state ----- */
-  const [sortField, setSortField] = useState<SortField>("crs");
+  const [sortField, setSortField] = useState<SortField>("qfs");
   const [sortDesc, setSortDesc] = useState(true);
 
-  /* ----- fetch all funds + categories ----- */
   const fetchData = useCallback(async () => {
     setLoading(true);
     setError(null);
@@ -55,7 +43,7 @@ export default function FundScoreboardPage() {
         apiFetch<ApiResponse<FundScoreOverview[]>>(
           "/api/v1/scores/overview?limit=1000",
         ),
-        apiFetch<CategoriesResponse>("/api/v1/scores/categories"),
+        apiFetch<ApiResponse<string[]>>("/api/v1/scores/categories"),
       ]);
 
       setFunds(fundsRes.data ?? []);
@@ -72,11 +60,9 @@ export default function FundScoreboardPage() {
     fetchData();
   }, [fetchData]);
 
-  /* ----- client-side filter + sort ----- */
   const displayFunds = useMemo(() => {
     let filtered = [...funds];
 
-    /* Search by fund name (case-insensitive partial match) */
     if (search.trim()) {
       const q = search.trim().toLowerCase();
       filtered = filtered.filter((f) => {
@@ -85,26 +71,22 @@ export default function FundScoreboardPage() {
       });
     }
 
-    /* Category exact match */
     if (categoryFilter) {
       filtered = filtered.filter((f) => f.category_name === categoryFilter);
     }
 
-    /* Tier exact match (uppercase) */
     if (tierFilter) {
       filtered = filtered.filter(
         (f) => (f.tier ?? "").toUpperCase() === tierFilter.toUpperCase(),
       );
     }
 
-    /* Action exact match (uppercase) */
     if (actionFilter) {
       filtered = filtered.filter(
         (f) => (f.action ?? "").toUpperCase() === actionFilter.toUpperCase(),
       );
     }
 
-    /* Sort */
     filtered.sort((a, b) => {
       const aVal = a[sortField];
       const bVal = b[sortField];
@@ -122,7 +104,6 @@ export default function FundScoreboardPage() {
     return filtered;
   }, [funds, search, categoryFilter, tierFilter, actionFilter, sortField, sortDesc]);
 
-  /* ----- sort helpers ----- */
   function handleSort(field: SortField) {
     if (sortField === field) {
       setSortDesc((d) => !d);
@@ -137,42 +118,39 @@ export default function FundScoreboardPage() {
     return sortDesc ? " \u25BC" : " \u25B2";
   }
 
-  /* ----- loading state ----- */
   if (loading) {
     return (
       <div>
         <PageHeader
-          emoji="\uD83D\uDCCA"
-          title="Fund Scoreboard"
-          subtitle="MF Recommendation Engine"
+          emoji="\uD83C\uDFC6"
+          title="Fund Universe"
+          subtitle="Master fund scoreboard"
         />
         <LoadingSkeleton variant="table" />
       </div>
     );
   }
 
-  /* ----- error state ----- */
   if (error) {
     return (
       <div>
         <PageHeader
-          emoji="\uD83D\uDCCA"
-          title="Fund Scoreboard"
-          subtitle="MF Recommendation Engine"
+          emoji="\uD83C\uDFC6"
+          title="Fund Universe"
+          subtitle="Master fund scoreboard"
         />
         <ErrorState message={error} onRetry={fetchData} />
       </div>
     );
   }
 
-  /* ----- empty state ----- */
   if (funds.length === 0) {
     return (
       <div>
         <PageHeader
-          emoji="\uD83D\uDCCA"
-          title="Fund Scoreboard"
-          subtitle="MF Recommendation Engine"
+          emoji="\uD83C\uDFC6"
+          title="Fund Universe"
+          subtitle="Master fund scoreboard"
         />
         <EmptyState
           title="No funds scored yet"
@@ -182,19 +160,17 @@ export default function FundScoreboardPage() {
     );
   }
 
-  /* ----- success state ----- */
   return (
     <div>
       <PageHeader
-        emoji="\uD83D\uDCCA"
-        title="Fund Scoreboard"
-        subtitle={`MF Recommendation Engine \u2014 ${totalFunds} funds scored`}
+        emoji="\uD83C\uDFC6"
+        title="Fund Universe"
+        subtitle={`All ${totalFunds} funds with QFS scores and QFS-based tier classification`}
       />
 
       {/* Filter controls */}
       <div className="bg-white rounded-xl border border-slate-200 p-4 mb-4">
         <div className="flex flex-wrap items-center gap-3">
-          {/* Search input */}
           <input
             type="text"
             placeholder="Search by fund name..."
@@ -203,7 +179,6 @@ export default function FundScoreboardPage() {
             className="w-64 bg-white border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-700 placeholder:text-slate-400 focus:ring-2 focus:ring-teal-500 focus:border-teal-500 outline-none"
           />
 
-          {/* Category dropdown */}
           <select
             value={categoryFilter}
             onChange={(e) => setCategoryFilter(e.target.value)}
@@ -217,7 +192,6 @@ export default function FundScoreboardPage() {
             ))}
           </select>
 
-          {/* Tier filter */}
           <select
             value={tierFilter}
             onChange={(e) => setTierFilter(e.target.value)}
@@ -231,7 +205,6 @@ export default function FundScoreboardPage() {
             <option value="EXIT">EXIT</option>
           </select>
 
-          {/* Action filter */}
           <select
             value={actionFilter}
             onChange={(e) => setActionFilter(e.target.value)}
@@ -240,12 +213,12 @@ export default function FundScoreboardPage() {
             <option value="">All Actions</option>
             <option value="BUY">BUY</option>
             <option value="SIP">SIP</option>
+            <option value="HOLD_PLUS">HOLD+</option>
             <option value="HOLD">HOLD</option>
-            <option value="SWITCH">SWITCH</option>
+            <option value="REDUCE">REDUCE</option>
             <option value="EXIT">EXIT</option>
           </select>
 
-          {/* Fund count display */}
           <div className="ml-auto text-sm text-slate-500">
             Showing{" "}
             <span className="font-semibold text-slate-700">
@@ -274,25 +247,19 @@ export default function FundScoreboardPage() {
                   Category
                 </th>
                 <th
-                  onClick={() => handleSort("crs")}
-                  className="px-4 py-3 text-right text-xs font-semibold text-slate-400 uppercase tracking-wider cursor-pointer hover:text-slate-600 select-none"
-                >
-                  Composite Score{sortIndicator("crs")}
-                </th>
-                <th
                   onClick={() => handleSort("qfs")}
                   className="px-4 py-3 text-right text-xs font-semibold text-slate-400 uppercase tracking-wider cursor-pointer hover:text-slate-600 select-none"
                 >
-                  Quantitative Score{sortIndicator("qfs")}
-                </th>
-                <th
-                  onClick={() => handleSort("fsas")}
-                  className="px-4 py-3 text-right text-xs font-semibold text-slate-400 uppercase tracking-wider cursor-pointer hover:text-slate-600 select-none"
-                >
-                  Sector Alignment{sortIndicator("fsas")}
+                  QFS{sortIndicator("qfs")}
                 </th>
                 <th className="px-4 py-3 text-center text-xs font-semibold text-slate-400 uppercase tracking-wider">
                   Tier
+                </th>
+                <th
+                  onClick={() => handleSort("qfs_rank")}
+                  className="px-4 py-3 text-right text-xs font-semibold text-slate-400 uppercase tracking-wider cursor-pointer hover:text-slate-600 select-none"
+                >
+                  QFS Rank{sortIndicator("qfs_rank")}
                 </th>
                 <th className="px-4 py-3 text-center text-xs font-semibold text-slate-400 uppercase tracking-wider">
                   Action
@@ -311,12 +278,9 @@ export default function FundScoreboardPage() {
                   key={fund.mstar_id}
                   className="border-b border-slate-100 hover:bg-slate-50 transition-colors"
                 >
-                  {/* Row number */}
                   <td className="px-4 py-3 text-sm text-slate-400 font-mono">
                     {idx + 1}
                   </td>
-
-                  {/* Fund Name — clickable link */}
                   <td className="px-4 py-3">
                     <Link
                       href={`/funds/${fund.mstar_id}`}
@@ -325,38 +289,32 @@ export default function FundScoreboardPage() {
                       {fund.fund_name ?? fund.mstar_id}
                     </Link>
                   </td>
-
-                  {/* Category */}
-                  <td className="px-4 py-3 text-sm text-slate-500">
+                  <td className="px-4 py-3 text-sm text-slate-500 max-w-[200px] truncate">
                     {fund.category_name ?? "--"}
                   </td>
-
-                  {/* Composite Score (CRS) */}
-                  <td className="px-4 py-3 text-right text-sm font-mono font-semibold text-slate-800">
-                    {formatScore(fund.crs)}
+                  <td className="px-4 py-3 text-right">
+                    <ScoreCell value={fund.qfs} />
                   </td>
-
-                  {/* Quantitative Score (QFS) */}
-                  <td className="px-4 py-3 text-right text-sm font-mono text-slate-700">
-                    {formatScore(fund.qfs)}
-                  </td>
-
-                  {/* Sector Alignment (FSAS) */}
-                  <td className="px-4 py-3 text-right text-sm font-mono text-slate-700">
-                    {formatScore(fund.fsas)}
-                  </td>
-
-                  {/* Tier */}
                   <td className="px-4 py-3 text-center">
                     <TierBadge tier={fund.tier ?? "--"} />
                   </td>
-
-                  {/* Action */}
+                  <td className="px-4 py-3 text-right text-sm font-mono tabular-nums text-slate-600">
+                    {fund.qfs_rank != null ? (
+                      <span>
+                        {fund.qfs_rank}
+                        {fund.category_rank_pct != null && (
+                          <span className="text-xs text-slate-400 ml-1">
+                            ({Math.round(fund.category_rank_pct)}th pct)
+                          </span>
+                        )}
+                      </span>
+                    ) : (
+                      "--"
+                    )}
+                  </td>
                   <td className="px-4 py-3 text-center">
                     <ActionBadge action={fund.action ?? "--"} />
                   </td>
-
-                  {/* Data Completeness */}
                   <td className="px-4 py-3 text-right">
                     <DataCompletenessBar value={fund.data_completeness_pct} />
                   </td>
@@ -365,7 +323,6 @@ export default function FundScoreboardPage() {
             </tbody>
           </table>
 
-          {/* No results after filtering */}
           {displayFunds.length === 0 && (
             <div className="py-12 text-center">
               <p className="text-sm font-medium text-slate-600">
@@ -383,7 +340,26 @@ export default function FundScoreboardPage() {
 }
 
 /* ------------------------------------------------------------------ */
-/*  Data Completeness bar — inline component                           */
+/*  Score cell — color-coded QFS score                                 */
+/* ------------------------------------------------------------------ */
+function ScoreCell({ value }: { value: number | null }) {
+  if (value === null || value === undefined) {
+    return <span className="text-sm text-slate-400 font-mono">--</span>;
+  }
+
+  let colorClass = "text-slate-600";
+  if (value >= 70) colorClass = "text-emerald-600";
+  else if (value < 40) colorClass = "text-red-600";
+
+  return (
+    <span className={`text-sm font-mono tabular-nums font-semibold ${colorClass}`}>
+      {formatScore(value)}
+    </span>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  Data Completeness bar                                              */
 /* ------------------------------------------------------------------ */
 function DataCompletenessBar({ value }: { value: number | null }) {
   if (value === null || value === undefined) {

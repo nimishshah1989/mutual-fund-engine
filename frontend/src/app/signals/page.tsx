@@ -1,20 +1,24 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useMemo } from "react";
 import { apiFetch } from "@/lib/api";
-import { formatDate } from "@/lib/formatters";
+import { formatDate, formatTimeAgo } from "@/lib/formatters";
 import type {
   ApiResponse,
-  FMSignal,
-  SignalCreatePayload,
-  SignalsResponse,
-  RecomputeResult,
+  SectorWithSignal,
+  SectorListResponse,
+  BulkSignalUpdatePayload,
+  BulkSignalUpdateResponse,
+  SignalChangeLogEntry,
 } from "@/types/api";
 import PageHeader from "@/components/PageHeader";
 import SignalBadge from "@/components/SignalBadge";
 import LoadingSkeleton from "@/components/LoadingSkeleton";
 import ErrorState from "@/components/ErrorState";
-import EmptyState from "@/components/EmptyState";
+
+/* ------------------------------------------------------------------ */
+/*  Constants                                                          */
+/* ------------------------------------------------------------------ */
 
 const SIGNAL_OPTIONS = [
   "OVERWEIGHT",
@@ -22,429 +26,669 @@ const SIGNAL_OPTIONS = [
   "NEUTRAL",
   "UNDERWEIGHT",
   "AVOID",
-];
+] as const;
 
-const CONFIDENCE_OPTIONS = ["HIGH", "MEDIUM", "LOW"];
+const CONFIDENCE_OPTIONS = ["HIGH", "MEDIUM", "LOW"] as const;
 
-/** Color map for confidence text badges */
 const CONFIDENCE_STYLES: Record<string, string> = {
   HIGH: "bg-emerald-100 text-emerald-700",
   MEDIUM: "bg-amber-100 text-amber-700",
   LOW: "bg-red-100 text-red-700",
 };
 
+const UPDATED_BY_STORAGE_KEY = "jip_fm_signals_updated_by";
+
+/* ------------------------------------------------------------------ */
+/*  Per-row edit state                                                 */
+/* ------------------------------------------------------------------ */
+
+interface SectorEditState {
+  signal: string;
+  confidence: string;
+  notes: string;
+}
+
+/* ------------------------------------------------------------------ */
+/*  Page Component                                                     */
+/* ------------------------------------------------------------------ */
+
 export default function SignalsPage() {
-  const [signals, setSignals] = useState<FMSignal[]>([]);
+  /* ---------- Sector data ---------- */
+  const [sectors, setSectors] = useState<SectorWithSignal[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  /* New signal form */
-  const [showForm, setShowForm] = useState(false);
-  const [formSectorName, setFormSectorName] = useState("");
-  const [formSignal, setFormSignal] = useState("NEUTRAL");
-  const [formConfidence, setFormConfidence] = useState("MEDIUM");
-  const [formUpdatedBy, setFormUpdatedBy] = useState("");
-  const [formNotes, setFormNotes] = useState("");
-  const [formError, setFormError] = useState<string | null>(null);
-  const [submitting, setSubmitting] = useState(false);
+  /* ---------- Edit state (map: sector_name -> edits) ---------- */
+  const [edits, setEdits] = useState<Record<string, SectorEditState>>({});
+  const [originals, setOriginals] = useState<Record<string, SectorEditState>>(
+    {},
+  );
 
-  /* Recompute */
-  const [recomputing, setRecomputing] = useState(false);
-  const [recomputeResult, setRecomputeResult] =
-    useState<RecomputeResult | null>(null);
-  const [recomputeError, setRecomputeError] = useState<string | null>(null);
+  /* ---------- Updated By ---------- */
+  const [updatedBy, setUpdatedBy] = useState<string>(() => {
+    if (typeof window !== "undefined") {
+      return localStorage.getItem(UPDATED_BY_STORAGE_KEY) ?? "";
+    }
+    return "";
+  });
 
-  /* ---- Fetch signals (response is { signals: [...] }) ---- */
-  const fetchSignals = useCallback(async () => {
+  /* ---------- Save state ---------- */
+  const [saving, setSaving] = useState(false);
+  const [saveResult, setSaveResult] = useState<{
+    message: string;
+    type: "success" | "error";
+  } | null>(null);
+
+  /* ---------- Change history ---------- */
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyError, setHistoryError] = useState<string | null>(null);
+  const [historyEntries, setHistoryEntries] = useState<SignalChangeLogEntry[]>(
+    [],
+  );
+  const [historyTotal, setHistoryTotal] = useState(0);
+
+  /* ---------------------------------------------------------------- */
+  /*  Fetch sectors                                                    */
+  /* ---------------------------------------------------------------- */
+
+  const fetchSectors = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const res = await apiFetch<ApiResponse<SignalsResponse>>(
-        "/api/v1/signals",
+      const res = await apiFetch<ApiResponse<SectorListResponse>>(
+        "/api/v1/signals/sectors",
       );
-      setSignals(res.data?.signals ?? []);
+      const sectorList = res.data?.sectors ?? [];
+      setSectors(sectorList);
+
+      // Build original + edit maps
+      const origMap: Record<string, SectorEditState> = {};
+      const editMap: Record<string, SectorEditState> = {};
+      for (const s of sectorList) {
+        const state: SectorEditState = {
+          signal: s.signal ?? "NEUTRAL",
+          confidence: s.confidence ?? "MEDIUM",
+          notes: s.notes ?? "",
+        };
+        origMap[s.sector_name] = { ...state };
+        editMap[s.sector_name] = { ...state };
+      }
+      setOriginals(origMap);
+      setEdits(editMap);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load signals");
+      setError(
+        err instanceof Error ? err.message : "Failed to load sector signals",
+      );
     } finally {
       setLoading(false);
     }
   }, []);
 
   useEffect(() => {
-    fetchSignals();
-  }, [fetchSignals]);
+    fetchSectors();
+  }, [fetchSectors]);
 
-  /* ---- Create new signal ---- */
-  async function handleCreateSignal(e: React.FormEvent) {
-    e.preventDefault();
-    setFormError(null);
+  /* ---------------------------------------------------------------- */
+  /*  Detect changed rows                                              */
+  /* ---------------------------------------------------------------- */
 
-    if (!formSectorName.trim()) {
-      setFormError("Sector name is required");
-      return;
+  const changedSectors = useMemo(() => {
+    const changed: string[] = [];
+    for (const sectorName of Object.keys(edits)) {
+      const orig = originals[sectorName];
+      const edit = edits[sectorName];
+      if (!orig || !edit) continue;
+      if (
+        orig.signal !== edit.signal ||
+        orig.confidence !== edit.confidence ||
+        orig.notes !== edit.notes
+      ) {
+        changed.push(sectorName);
+      }
     }
-    if (!formUpdatedBy.trim()) {
-      setFormError("Updated By is required");
-      return;
-    }
+    return new Set(changed);
+  }, [edits, originals]);
 
-    setSubmitting(true);
+  const hasChanges = changedSectors.size > 0;
+  const canSave = hasChanges && updatedBy.trim().length > 0 && !saving;
+
+  /* ---------------------------------------------------------------- */
+  /*  Edit handlers                                                    */
+  /* ---------------------------------------------------------------- */
+
+  function updateEdit(
+    sectorName: string,
+    field: keyof SectorEditState,
+    value: string,
+  ) {
+    setEdits((prev) => ({
+      ...prev,
+      [sectorName]: {
+        ...prev[sectorName],
+        [field]: value,
+      },
+    }));
+    // Clear any previous save result when user makes new edits
+    setSaveResult(null);
+  }
+
+  /* ---------------------------------------------------------------- */
+  /*  Save bulk changes                                                */
+  /* ---------------------------------------------------------------- */
+
+  async function handleSave() {
+    if (!canSave) return;
+
+    // Persist updatedBy for next session
+    localStorage.setItem(UPDATED_BY_STORAGE_KEY, updatedBy.trim());
+
+    const changedSignals = Array.from(changedSectors).map((sectorName) => ({
+      sector_name: sectorName,
+      signal: edits[sectorName].signal,
+      confidence: edits[sectorName].confidence,
+      notes: edits[sectorName].notes.trim() || null,
+    }));
+
+    const payload: BulkSignalUpdatePayload = {
+      signals: changedSignals,
+      updated_by: updatedBy.trim(),
+    };
+
+    setSaving(true);
+    setSaveResult(null);
+
     try {
-      const payload: SignalCreatePayload = {
-        sector_name: formSectorName.trim(),
-        signal: formSignal,
-        confidence: formConfidence,
-        updated_by: formUpdatedBy.trim(),
-        notes: formNotes.trim() || undefined,
-      };
+      const res = await apiFetch<ApiResponse<BulkSignalUpdateResponse>>(
+        "/api/v1/signals/bulk",
+        {
+          method: "PUT",
+          body: JSON.stringify(payload),
+        },
+      );
 
-      await apiFetch<ApiResponse<FMSignal>>("/api/v1/signals", {
-        method: "POST",
-        body: JSON.stringify(payload),
+      const updatedCount = res.data?.updated_count ?? changedSignals.length;
+      setSaveResult({
+        message: `${updatedCount} sector signal${updatedCount !== 1 ? "s" : ""} updated successfully.`,
+        type: "success",
       });
 
-      /* Reset form and refresh list */
-      setFormSectorName("");
-      setFormSignal("NEUTRAL");
-      setFormConfidence("MEDIUM");
-      setFormUpdatedBy("");
-      setFormNotes("");
-      setShowForm(false);
-      await fetchSignals();
+      // Refresh data to sync originals
+      await fetchSectors();
+
+      // If history is open, refresh it too
+      if (historyOpen) {
+        fetchHistory();
+      }
     } catch (err) {
-      setFormError(
-        err instanceof Error ? err.message : "Failed to create signal",
-      );
+      setSaveResult({
+        message:
+          err instanceof Error ? err.message : "Failed to save signal changes",
+        type: "error",
+      });
     } finally {
-      setSubmitting(false);
+      setSaving(false);
     }
   }
 
-  /* ---- Recompute scores ---- */
-  async function handleRecompute() {
-    setRecomputing(true);
-    setRecomputeResult(null);
-    setRecomputeError(null);
+  /* ---------------------------------------------------------------- */
+  /*  Fetch change history                                             */
+  /* ---------------------------------------------------------------- */
+
+  const fetchHistory = useCallback(async () => {
+    setHistoryLoading(true);
+    setHistoryError(null);
     try {
-      const res = await apiFetch<ApiResponse<RecomputeResult>>(
-        "/api/v1/jobs/fm-signal-recompute",
-        { method: "POST" },
+      const res = await apiFetch<ApiResponse<SignalChangeLogEntry[]>>(
+        "/api/v1/signals/history?page=1&limit=20",
       );
-      setRecomputeResult(res.data ?? null);
+      setHistoryEntries(res.data ?? []);
+      setHistoryTotal(res.meta?.total ?? 0);
     } catch (err) {
-      setRecomputeError(
-        err instanceof Error ? err.message : "Recompute failed",
+      setHistoryError(
+        err instanceof Error ? err.message : "Failed to load change history",
       );
     } finally {
-      setRecomputing(false);
+      setHistoryLoading(false);
+    }
+  }, []);
+
+  function handleToggleHistory() {
+    const willOpen = !historyOpen;
+    setHistoryOpen(willOpen);
+    if (willOpen && historyEntries.length === 0) {
+      fetchHistory();
     }
   }
 
-  /* ---- Loading state ---- */
+  /* ---------------------------------------------------------------- */
+  /*  Auto-dismiss save result toast after 5 seconds                   */
+  /* ---------------------------------------------------------------- */
+
+  useEffect(() => {
+    if (!saveResult) return;
+    const timer = setTimeout(() => setSaveResult(null), 5000);
+    return () => clearTimeout(timer);
+  }, [saveResult]);
+
+  /* ---------------------------------------------------------------- */
+  /*  Loading state                                                    */
+  /* ---------------------------------------------------------------- */
+
   if (loading) {
     return (
       <div>
         <PageHeader
           emoji="\uD83D\uDCC8"
-          title="FM Signals"
-          subtitle="Fund Manager sector signals"
+          title="FM Sector Signals"
+          subtitle="Manage sector views \u2014 bulk edit all sectors at once"
         />
         <LoadingSkeleton variant="table" />
       </div>
     );
   }
 
-  /* ---- Error state ---- */
+  /* ---------------------------------------------------------------- */
+  /*  Error state                                                      */
+  /* ---------------------------------------------------------------- */
+
   if (error) {
     return (
       <div>
         <PageHeader
           emoji="\uD83D\uDCC8"
-          title="FM Signals"
-          subtitle="Fund Manager sector signals"
+          title="FM Sector Signals"
+          subtitle="Manage sector views \u2014 bulk edit all sectors at once"
         />
-        <ErrorState message={error} onRetry={fetchSignals} />
+        <ErrorState message={error} onRetry={fetchSectors} />
       </div>
     );
   }
+
+  /* ---------------------------------------------------------------- */
+  /*  Main render                                                      */
+  /* ---------------------------------------------------------------- */
 
   return (
     <div>
       <PageHeader
         emoji="\uD83D\uDCC8"
-        title="FM Signals"
-        subtitle="Fund Manager sector signals"
+        title="FM Sector Signals"
+        subtitle="Manage sector views \u2014 bulk edit all sectors at once"
       />
 
-      {/* Action buttons */}
-      <div className="flex items-center gap-3 mb-6">
+      {/* Updated By + Save button bar */}
+      <div className="flex items-end justify-between gap-4 mb-6">
+        <div className="flex items-end gap-4">
+          <div>
+            <label className="text-xs text-slate-500 mb-1 block">
+              Updated By <span className="text-red-500">*</span>
+            </label>
+            <input
+              type="text"
+              value={updatedBy}
+              onChange={(e) => setUpdatedBy(e.target.value)}
+              placeholder="Your name (e.g. Nimish Shah)"
+              className="w-64 bg-white border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-700 placeholder:text-slate-400 focus:ring-2 focus:ring-teal-500 focus:border-teal-500 outline-none"
+            />
+          </div>
+          {hasChanges && (
+            <p className="text-xs text-teal-600 font-medium pb-2">
+              {changedSectors.size} sector
+              {changedSectors.size !== 1 ? "s" : ""} modified
+            </p>
+          )}
+        </div>
         <button
-          onClick={() => setShowForm((s) => !s)}
-          className="bg-teal-600 text-white font-medium px-4 py-2 rounded-lg hover:bg-teal-700 transition-colors text-sm flex items-center gap-1"
+          onClick={handleSave}
+          disabled={!canSave}
+          className="bg-teal-600 text-white px-6 py-2.5 rounded-lg font-medium hover:bg-teal-700 disabled:bg-slate-300 disabled:cursor-not-allowed transition-colors text-sm"
         >
-          <span>+</span> Add / Update Signal
-        </button>
-        <button
-          onClick={handleRecompute}
-          disabled={recomputing}
-          className="bg-white text-slate-600 font-medium px-4 py-2 rounded-lg border border-slate-200 hover:bg-slate-50 transition-colors text-sm disabled:opacity-50"
-        >
-          {recomputing ? "Recomputing..." : "Recompute Scores"}
+          {saving ? "Saving..." : "Save All Changes"}
         </button>
       </div>
 
-      {/* Recompute result */}
-      {recomputeResult && (
-        <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4 mb-6">
-          <p className="text-sm font-medium text-emerald-800">
-            Recompute Complete &mdash; {recomputeResult.status}
-          </p>
-          <p className="text-xs text-emerald-600 mt-1">
-            {recomputeResult.summary.total_funds_rescored} funds rescored in{" "}
-            {recomputeResult.duration_seconds.toFixed(2)}s
-          </p>
-
-          {/* Tier distribution breakdown */}
-          {recomputeResult.summary.tier_distribution &&
-            Object.keys(recomputeResult.summary.tier_distribution).length >
-              0 && (
-              <div className="flex items-center gap-3 mt-2">
-                <span className="text-xs text-emerald-700 font-medium">
-                  Tier Distribution:
-                </span>
-                {Object.entries(
-                  recomputeResult.summary.tier_distribution,
-                ).map(([tier, count]) => (
-                  <span
-                    key={tier}
-                    className="inline-flex items-center gap-1 bg-white border border-emerald-200 rounded px-2 py-0.5 text-xs text-slate-700"
-                  >
-                    <span className="font-medium">{tier}</span>
-                    <span className="font-mono">{count}</span>
-                  </span>
-                ))}
-              </div>
-            )}
-
-          {/* Sector Alignment / Composite Score category summary */}
-          <div className="flex items-center gap-4 mt-2 text-xs text-emerald-600">
-            <span>
-              Sector Alignment: {recomputeResult.fsas.categories_completed} completed
-              {recomputeResult.fsas.categories_failed > 0 && (
-                <span className="text-red-600">
-                  , {recomputeResult.fsas.categories_failed} failed
-                </span>
-              )}
-            </span>
-            <span>
-              Composite Score: {recomputeResult.crs.categories_completed} completed
-              {recomputeResult.crs.categories_failed > 0 && (
-                <span className="text-red-600">
-                  , {recomputeResult.crs.categories_failed} failed
-                </span>
-              )}
-            </span>
+      {/* Save result toast */}
+      {saveResult && (
+        <div
+          className={`rounded-xl border p-4 mb-6 ${
+            saveResult.type === "success"
+              ? "bg-emerald-50 border-emerald-200"
+              : "bg-red-50 border-red-200"
+          }`}
+        >
+          <div className="flex items-center justify-between">
+            <p
+              className={`text-sm font-medium ${
+                saveResult.type === "success"
+                  ? "text-emerald-800"
+                  : "text-red-800"
+              }`}
+            >
+              {saveResult.type === "success" ? "Changes Saved" : "Save Failed"}
+            </p>
+            <button
+              onClick={() => setSaveResult(null)}
+              className="text-slate-400 hover:text-slate-600 text-sm"
+            >
+              Dismiss
+            </button>
           </div>
-        </div>
-      )}
-      {recomputeError && (
-        <div className="bg-red-50 border border-red-200 rounded-xl p-4 mb-6">
-          <p className="text-sm font-medium text-red-800">Recompute Failed</p>
-          <p className="text-xs text-red-600 mt-1">{recomputeError}</p>
+          <p
+            className={`text-xs mt-1 ${
+              saveResult.type === "success"
+                ? "text-emerald-600"
+                : "text-red-600"
+            }`}
+          >
+            {saveResult.message}
+          </p>
         </div>
       )}
 
-      {/* Add / Update signal form */}
-      {showForm && (
-        <div className="bg-white rounded-xl border border-slate-200 p-6 mb-6">
-          <h3 className="text-base font-semibold text-slate-800 mb-4">
-            Add / Update Signal
-          </h3>
-          <form onSubmit={handleCreateSignal}>
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
-              <div>
-                <label className="text-xs text-slate-500 mb-1 block">
-                  Sector Name
-                </label>
-                <input
-                  type="text"
-                  value={formSectorName}
-                  onChange={(e) => setFormSectorName(e.target.value)}
-                  placeholder="e.g. Technology"
-                  className="w-full bg-white border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-700 placeholder:text-slate-400 focus:ring-2 focus:ring-teal-500 focus:border-teal-500 outline-none"
-                />
-              </div>
-              <div>
-                <label className="text-xs text-slate-500 mb-1 block">
+      {/* Sector signals bulk edit table */}
+      <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full border-collapse">
+            <thead>
+              <tr className="border-b border-slate-200 bg-slate-50">
+                <th className="text-left px-4 py-3 text-xs font-semibold text-slate-400 uppercase tracking-wider w-[200px]">
+                  Sector
+                </th>
+                <th className="text-left px-4 py-3 text-xs font-semibold text-slate-400 uppercase tracking-wider w-[180px]">
                   Signal
-                </label>
-                <select
-                  value={formSignal}
-                  onChange={(e) => setFormSignal(e.target.value)}
-                  className="w-full bg-white border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-700 focus:ring-2 focus:ring-teal-500 focus:border-teal-500 outline-none"
-                >
-                  {SIGNAL_OPTIONS.map((s) => (
-                    <option key={s} value={s}>
-                      {s}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className="text-xs text-slate-500 mb-1 block">
+                </th>
+                <th className="text-left px-4 py-3 text-xs font-semibold text-slate-400 uppercase tracking-wider w-[140px]">
                   Confidence
-                </label>
-                <select
-                  value={formConfidence}
-                  onChange={(e) => setFormConfidence(e.target.value)}
-                  className="w-full bg-white border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-700 focus:ring-2 focus:ring-teal-500 focus:border-teal-500 outline-none"
-                >
-                  {CONFIDENCE_OPTIONS.map((c) => (
-                    <option key={c} value={c}>
-                      {c}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className="text-xs text-slate-500 mb-1 block">
-                  Updated By
-                </label>
-                <input
-                  type="text"
-                  value={formUpdatedBy}
-                  onChange={(e) => setFormUpdatedBy(e.target.value)}
-                  placeholder="Your name"
-                  className="w-full bg-white border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-700 placeholder:text-slate-400 focus:ring-2 focus:ring-teal-500 focus:border-teal-500 outline-none"
-                />
-              </div>
-            </div>
+                </th>
+                <th className="text-left px-4 py-3 text-xs font-semibold text-slate-400 uppercase tracking-wider">
+                  Notes
+                </th>
+                <th className="text-left px-4 py-3 text-xs font-semibold text-slate-400 uppercase tracking-wider w-[160px]">
+                  Last Updated
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {sectors.map((sector) => {
+                const edit = edits[sector.sector_name];
+                const isChanged = changedSectors.has(sector.sector_name);
 
-            {/* Notes field */}
-            <div className="mt-4">
-              <label className="text-xs text-slate-500 mb-1 block">
-                Notes (optional)
-              </label>
-              <textarea
-                value={formNotes}
-                onChange={(e) => setFormNotes(e.target.value)}
-                placeholder="e.g. Infra push beneficiary"
-                rows={2}
-                className="w-full bg-white border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-700 placeholder:text-slate-400 focus:ring-2 focus:ring-teal-500 focus:border-teal-500 outline-none resize-none"
-              />
-            </div>
-
-            {formError && (
-              <p className="text-xs text-red-600 mt-2">{formError}</p>
-            )}
-            <div className="flex items-center gap-3 mt-4">
-              <button
-                type="submit"
-                disabled={submitting}
-                className="bg-teal-600 text-white font-medium px-4 py-2 rounded-lg hover:bg-teal-700 transition-colors text-sm disabled:opacity-50"
-              >
-                {submitting ? "Saving..." : "Save Signal"}
-              </button>
-              <button
-                type="button"
-                onClick={() => setShowForm(false)}
-                className="bg-white text-slate-600 font-medium px-4 py-2 rounded-lg border border-slate-200 hover:bg-slate-50 transition-colors text-sm"
-              >
-                Cancel
-              </button>
-            </div>
-          </form>
-        </div>
-      )}
-
-      {/* Signals table */}
-      {signals.length === 0 ? (
-        <EmptyState
-          title="No signals configured"
-          description="Add sector signals to influence fund scoring via the Sector Alignment layer."
-          actionLabel="Add Signal"
-          onAction={() => setShowForm(true)}
-        />
-      ) : (
-        <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead>
-                <tr className="border-b border-slate-200">
-                  <th className="text-left px-4 py-3 text-xs font-semibold text-slate-400 uppercase tracking-wider">
-                    Sector
-                  </th>
-                  <th className="text-center px-4 py-3 text-xs font-semibold text-slate-400 uppercase tracking-wider">
-                    Signal
-                  </th>
-                  <th className="text-center px-4 py-3 text-xs font-semibold text-slate-400 uppercase tracking-wider">
-                    Confidence
-                  </th>
-                  <th className="text-right px-4 py-3 text-xs font-semibold text-slate-400 uppercase tracking-wider">
-                    Signal Weight
-                  </th>
-                  <th className="text-left px-4 py-3 text-xs font-semibold text-slate-400 uppercase tracking-wider">
-                    Notes
-                  </th>
-                  <th className="text-center px-4 py-3 text-xs font-semibold text-slate-400 uppercase tracking-wider">
-                    Active
-                  </th>
-                  <th className="text-left px-4 py-3 text-xs font-semibold text-slate-400 uppercase tracking-wider">
-                    Updated By
-                  </th>
-                  <th className="text-left px-4 py-3 text-xs font-semibold text-slate-400 uppercase tracking-wider">
-                    Effective Date
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {signals.map((sig) => (
+                return (
                   <tr
-                    key={sig.id}
-                    className="border-b border-slate-100 hover:bg-slate-50 transition-colors"
+                    key={sector.sector_name}
+                    className={`border-b border-slate-100 hover:bg-slate-50 transition-colors ${
+                      isChanged ? "border-l-4 border-l-teal-500" : "border-l-4 border-l-transparent"
+                    }`}
                   >
+                    {/* Sector name */}
                     <td className="px-4 py-3 text-sm font-medium text-slate-800">
-                      {sig.sector_name}
+                      {sector.sector_name}
                     </td>
-                    <td className="px-4 py-3 text-center">
-                      <SignalBadge signal={sig.signal} />
-                    </td>
-                    <td className="px-4 py-3 text-center">
-                      <span
-                        className={`inline-block rounded-full px-2.5 py-0.5 text-xs font-medium ${
-                          CONFIDENCE_STYLES[sig.confidence] ??
-                          "bg-slate-100 text-slate-600"
-                        }`}
+
+                    {/* Signal dropdown */}
+                    <td className="px-4 py-3">
+                      <select
+                        value={edit?.signal ?? "NEUTRAL"}
+                        onChange={(e) =>
+                          updateEdit(
+                            sector.sector_name,
+                            "signal",
+                            e.target.value,
+                          )
+                        }
+                        className="border border-slate-200 rounded px-3 py-1.5 text-sm bg-white focus:ring-2 focus:ring-teal-500 focus:border-teal-500 outline-none w-full"
                       >
-                        {sig.confidence}
-                      </span>
+                        {SIGNAL_OPTIONS.map((s) => (
+                          <option key={s} value={s}>
+                            {s}
+                          </option>
+                        ))}
+                      </select>
                     </td>
-                    <td className="px-4 py-3 text-right text-sm font-mono text-slate-700">
-                      {sig.signal_weight.toFixed(2)}
+
+                    {/* Confidence dropdown */}
+                    <td className="px-4 py-3">
+                      <select
+                        value={edit?.confidence ?? "MEDIUM"}
+                        onChange={(e) =>
+                          updateEdit(
+                            sector.sector_name,
+                            "confidence",
+                            e.target.value,
+                          )
+                        }
+                        className="border border-slate-200 rounded px-3 py-1.5 text-sm bg-white focus:ring-2 focus:ring-teal-500 focus:border-teal-500 outline-none w-full"
+                      >
+                        {CONFIDENCE_OPTIONS.map((c) => (
+                          <option key={c} value={c}>
+                            {c}
+                          </option>
+                        ))}
+                      </select>
                     </td>
-                    <td className="px-4 py-3 text-sm text-slate-500 max-w-[200px] truncate">
-                      {sig.notes ?? "\u2014"}
+
+                    {/* Notes text input */}
+                    <td className="px-4 py-3">
+                      <input
+                        type="text"
+                        value={edit?.notes ?? ""}
+                        onChange={(e) =>
+                          updateEdit(
+                            sector.sector_name,
+                            "notes",
+                            e.target.value,
+                          )
+                        }
+                        placeholder="Optional notes..."
+                        className="border border-slate-200 rounded px-3 py-1.5 text-sm bg-white focus:ring-2 focus:ring-teal-500 focus:border-teal-500 outline-none w-full placeholder:text-slate-400"
+                      />
                     </td>
-                    <td className="px-4 py-3 text-center">
-                      {sig.is_active ? (
-                        <span className="inline-block w-2 h-2 rounded-full bg-emerald-500" title="Active" />
+
+                    {/* Last updated */}
+                    <td className="px-4 py-3 text-sm text-slate-500">
+                      {sector.last_updated ? (
+                        <div>
+                          <span>{formatDate(sector.last_updated)}</span>
+                          <span className="block text-xs text-slate-400">
+                            {formatTimeAgo(sector.last_updated)}
+                            {sector.updated_by && (
+                              <> &middot; {sector.updated_by}</>
+                            )}
+                          </span>
+                        </div>
                       ) : (
-                        <span className="inline-block w-2 h-2 rounded-full bg-slate-300" title="Inactive" />
+                        <span className="text-slate-400">No signal set</span>
                       )}
                     </td>
-                    <td className="px-4 py-3 text-sm text-slate-600">
-                      {sig.updated_by}
-                    </td>
-                    <td className="px-4 py-3 text-sm text-slate-500">
-                      {formatDate(sig.effective_date)}
-                    </td>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+
+        {/* Empty state inside the card if somehow no sectors come back */}
+        {sectors.length === 0 && (
+          <div className="text-center py-12">
+            <p className="text-sm font-medium text-slate-600">
+              No sectors returned from the server
+            </p>
+            <p className="text-xs text-slate-400 mt-1">
+              Ensure the backend has the 11 GICS sectors configured.
+            </p>
+            <button
+              onClick={fetchSectors}
+              className="mt-4 bg-teal-600 text-white font-medium px-4 py-2 rounded-lg hover:bg-teal-700 transition-colors text-sm"
+            >
+              Retry
+            </button>
           </div>
+        )}
+      </div>
+
+      {/* Current signal preview strip */}
+      {sectors.length > 0 && (
+        <div className="mt-4 flex flex-wrap items-center gap-2">
+          <span className="text-xs text-slate-400 font-medium mr-1">
+            Current signals:
+          </span>
+          {sectors.map((sector) => {
+            const currentSignal = edits[sector.sector_name]?.signal ?? "NEUTRAL";
+            return (
+              <div
+                key={sector.sector_name}
+                className="flex items-center gap-1.5"
+              >
+                <span className="text-xs text-slate-500">
+                  {sector.sector_name}
+                </span>
+                <SignalBadge signal={currentSignal} />
+              </div>
+            );
+          })}
         </div>
       )}
+
+      {/* ---- Change History (collapsible) ---- */}
+      <div className="mt-8">
+        <button
+          onClick={handleToggleHistory}
+          className="flex items-center gap-2 text-sm font-semibold text-slate-700 hover:text-slate-900 transition-colors"
+        >
+          <svg
+            className={`w-4 h-4 transition-transform ${historyOpen ? "rotate-90" : ""}`}
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+            strokeWidth={2}
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              d="M9 5l7 7-7 7"
+            />
+          </svg>
+          Change History
+          {historyTotal > 0 && (
+            <span className="text-xs text-slate-400 font-normal">
+              ({historyTotal} entries)
+            </span>
+          )}
+        </button>
+
+        {historyOpen && (
+          <div className="mt-4">
+            {historyLoading && <LoadingSkeleton variant="table" />}
+
+            {historyError && (
+              <ErrorState message={historyError} onRetry={fetchHistory} />
+            )}
+
+            {!historyLoading && !historyError && historyEntries.length === 0 && (
+              <div className="bg-white rounded-xl border border-slate-200 p-8 text-center">
+                <p className="text-sm text-slate-500">
+                  No change history found.
+                </p>
+              </div>
+            )}
+
+            {!historyLoading &&
+              !historyError &&
+              historyEntries.length > 0 && (
+                <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+                  <div className="overflow-x-auto">
+                    <table className="w-full border-collapse">
+                      <thead>
+                        <tr className="border-b border-slate-200 bg-slate-50">
+                          <th className="text-left px-4 py-3 text-xs font-semibold text-slate-400 uppercase tracking-wider">
+                            Date
+                          </th>
+                          <th className="text-left px-4 py-3 text-xs font-semibold text-slate-400 uppercase tracking-wider">
+                            Sector
+                          </th>
+                          <th className="text-left px-4 py-3 text-xs font-semibold text-slate-400 uppercase tracking-wider">
+                            Signal Change
+                          </th>
+                          <th className="text-left px-4 py-3 text-xs font-semibold text-slate-400 uppercase tracking-wider">
+                            Confidence Change
+                          </th>
+                          <th className="text-left px-4 py-3 text-xs font-semibold text-slate-400 uppercase tracking-wider">
+                            Changed By
+                          </th>
+                          <th className="text-left px-4 py-3 text-xs font-semibold text-slate-400 uppercase tracking-wider">
+                            Reason
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {historyEntries.map((entry) => (
+                          <tr
+                            key={entry.id}
+                            className="border-b border-slate-100 hover:bg-slate-50 transition-colors"
+                          >
+                            <td className="px-4 py-3 text-sm text-slate-600">
+                              <div>
+                                {formatDate(entry.changed_at)}
+                                <span className="block text-xs text-slate-400">
+                                  {formatTimeAgo(entry.changed_at)}
+                                </span>
+                              </div>
+                            </td>
+                            <td className="px-4 py-3 text-sm font-medium text-slate-800">
+                              {entry.sector_name}
+                            </td>
+                            <td className="px-4 py-3 text-sm">
+                              <div className="flex items-center gap-1.5">
+                                {entry.old_signal ? (
+                                  <SignalBadge signal={entry.old_signal} />
+                                ) : (
+                                  <span className="text-xs text-slate-400">
+                                    (none)
+                                  </span>
+                                )}
+                                <span className="text-slate-400">&rarr;</span>
+                                <SignalBadge signal={entry.new_signal} />
+                              </div>
+                            </td>
+                            <td className="px-4 py-3 text-sm">
+                              <div className="flex items-center gap-1.5">
+                                <span
+                                  className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${
+                                    CONFIDENCE_STYLES[
+                                      entry.old_confidence ?? ""
+                                    ] ?? "bg-slate-100 text-slate-500"
+                                  }`}
+                                >
+                                  {entry.old_confidence ?? "--"}
+                                </span>
+                                <span className="text-slate-400">&rarr;</span>
+                                <span
+                                  className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${
+                                    CONFIDENCE_STYLES[entry.new_confidence] ??
+                                    "bg-slate-100 text-slate-500"
+                                  }`}
+                                >
+                                  {entry.new_confidence}
+                                </span>
+                              </div>
+                            </td>
+                            <td className="px-4 py-3 text-sm text-slate-600">
+                              {entry.changed_by}
+                            </td>
+                            <td className="px-4 py-3 text-sm text-slate-500 max-w-[200px] truncate">
+                              {entry.change_reason ?? "\u2014"}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+          </div>
+        )}
+      </div>
     </div>
   );
 }

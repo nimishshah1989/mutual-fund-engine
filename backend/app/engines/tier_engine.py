@@ -3,18 +3,22 @@ engines/tier_engine.py
 
 Tier Assignment + Hard Override Rules for the JIP Recommendation Engine.
 
-Takes a CRS score and assigns a tier (CORE / QUALITY / WATCH / CAUTION / EXIT)
-and an action (BUY / SIP / HOLD / REDUCE / EXIT). Then applies hard override
-rules that can DOWNGRADE a tier (never upgrade).
+NEW (v2): Tiers are assigned based on QFS percentile rank within category,
+not on an absolute CRS threshold. This means a fund's tier depends on how
+it compares to peers in the same SEBI category.
 
-Hard Override Rules:
+Percentile Ranges:
+    90-100 → CORE (top 10%)
+    70-89  → QUALITY
+    40-69  → WATCH
+    20-39  → CAUTION
+    0-19   → EXIT
+
+Hard Override Rules (can only DOWNGRADE, never upgrade):
     1. AVOID exposure > 25% → force to CAUTION minimum
     2. Manager tenure < 12 months → force to WATCH minimum (uses inception_date)
     3. Data completeness < 60% → force to WATCH minimum + flag INSUFFICIENT_DATA
     4. Emerging fund (< 36 months) → force to WATCH minimum + flag EMERGING_FUND
-
-Override rules can only downgrade — if a fund is already at CAUTION and an
-override would push to WATCH, CAUTION stays because CAUTION is lower.
 """
 
 from __future__ import annotations
@@ -28,15 +32,15 @@ logger = structlog.get_logger(__name__)
 
 
 class TierEngine:
-    """Assigns tier, action, and applies hard override rules."""
+    """Assigns tier, action, and applies hard override rules based on QFS percentile rank."""
 
-    # Tier thresholds — ordered highest first.
-    # CRS >= threshold → assigned that tier. Below 20 → EXIT.
-    TIER_THRESHOLDS: list[Tuple[str, int]] = [
-        ("CORE", 72),
-        ("QUALITY", 55),
-        ("WATCH", 38),
-        ("CAUTION", 20),
+    # Percentile-based tier thresholds — percentile >= threshold → assigned that tier
+    # Ordered highest first. Below 20 → EXIT.
+    TIER_PERCENTILE_THRESHOLDS: list[Tuple[str, float]] = [
+        ("CORE", 90.0),
+        ("QUALITY", 70.0),
+        ("WATCH", 40.0),
+        ("CAUTION", 20.0),
     ]
 
     # Tier → recommended action
@@ -63,18 +67,18 @@ class TierEngine:
     DATA_COMPLETENESS_THRESHOLD: float = 60.0  # percentage
     FUND_AGE_MONTHS: int = 36
 
-    def assign_tier(self, crs: float) -> str:
+    def assign_tier_by_percentile(self, percentile: float) -> str:
         """
-        Assign a tier based on the CRS score.
+        Assign a tier based on the QFS percentile rank within category.
 
         Args:
-            crs: Composite Recommendation Score (0-100).
+            percentile: Percentile rank 0-100 (100 = best in category).
 
         Returns:
             Tier string: CORE, QUALITY, WATCH, CAUTION, or EXIT.
         """
-        for tier_name, threshold in self.TIER_THRESHOLDS:
-            if crs >= threshold:
+        for tier_name, threshold in self.TIER_PERCENTILE_THRESHOLDS:
+            if percentile >= threshold:
                 return tier_name
         return "EXIT"
 
@@ -90,6 +94,49 @@ class TierEngine:
         """
         return self.TIER_ACTIONS.get(tier, "HOLD")
 
+    def refine_action_with_fsas(
+        self,
+        tier: str,
+        base_action: str,
+        fsas: Optional[float],
+        avoid_exposure_pct: float = 0.0,
+    ) -> str:
+        """
+        Refine the action based on FSAS alignment (for shortlisted funds only).
+
+        If FSAS is high, the fund can get a stronger action within its tier.
+        If FSAS is low, the action may be weakened.
+
+        Args:
+            tier: Current tier from QFS percentile.
+            base_action: Base action from tier mapping.
+            fsas: FSAS score (0-100), None if not shortlisted.
+            avoid_exposure_pct: Percentage of portfolio in AVOID sectors.
+
+        Returns:
+            Refined action string.
+        """
+        if fsas is None:
+            return base_action
+
+        # High FSAS on QUALITY tier → upgrade to BUY
+        if tier == "QUALITY" and fsas >= 75.0:
+            return "BUY"
+
+        # Low FSAS on CORE tier → downgrade to SIP (hold conviction, but slower)
+        if tier == "CORE" and fsas < 30.0:
+            return "SIP"
+
+        # WATCH with high FSAS → HOLD_PLUS (more conviction than plain HOLD)
+        if tier == "WATCH" and fsas >= 70.0:
+            return "HOLD_PLUS"
+
+        # Significant AVOID exposure → always cap at HOLD regardless of tier
+        if avoid_exposure_pct > 15.0 and base_action in ("BUY", "SIP"):
+            return "HOLD"
+
+        return base_action
+
     def apply_overrides(
         self,
         tier: str,
@@ -103,7 +150,7 @@ class TierEngine:
         the most severe downgrade wins.
 
         Args:
-            tier: Current tier from CRS-based assignment.
+            tier: Current tier from QFS percentile-based assignment.
             action: Current action from tier mapping.
             fund_data: Dict containing fund metadata needed for override checks:
                 - avoid_exposure_pct (float): % of portfolio in AVOID sectors
@@ -114,8 +161,6 @@ class TierEngine:
         Returns:
             Tuple of (final_tier, final_action, override_applied, override_reason,
                       override_flag).
-            override_flag is a machine-readable label like "INSUFFICIENT_DATA"
-            or "EMERGING_FUND".
         """
         original_tier = tier
         override_applied = False
@@ -137,7 +182,6 @@ class TierEngine:
                 )
 
         # Rule 2: Manager tenure < 12 months → force to WATCH minimum
-        # Uses inception_date from fund_master as proxy for FM tenure
         inception_date = fund_data.get("inception_date")
         reference_date = fund_data.get("reference_date", date.today())
         if inception_date is not None:
@@ -186,26 +230,20 @@ class TierEngine:
                     f"Emerging fund ({fund_age_months} months < "
                     f"{self.FUND_AGE_MONTHS} months)"
                 )
-                # EMERGING_FUND flag takes precedence only if no other flag set
                 if override_flag is None:
                     override_flag = "EMERGING_FUND"
 
         # Determine final tier from the (possibly downgraded) rank
         final_tier = tier
         if current_rank > self.TIER_RANK.get(tier, 4):
-            # Tier was downgraded — find the tier name for the new rank
             for tier_name, rank in self.TIER_RANK.items():
                 if rank == current_rank:
                     final_tier = tier_name
                     break
             override_applied = True
 
-        # If overrides were applied via the flag rules but rank didn't change
-        # (fund was already at or below WATCH), still mark override_applied
-        # if there are any reasons collected
+        # If overrides triggered flags but rank didn't change, still mark
         if override_reasons and not override_applied:
-            # Check if any reason was actually triggered for a fund at/below threshold
-            # In this case, we log the flag but don't change the tier
             if override_flag is not None:
                 override_applied = True
 
@@ -227,64 +265,51 @@ class TierEngine:
         self,
         tier: str,
         action: str,
-        crs: float,
         qfs: float,
-        fsas: float,
+        percentile: float,
+        fsas: Optional[float],
         override_reason: Optional[str],
+        is_shortlisted: bool = False,
     ) -> str:
         """
         Generate a human-readable rationale for the tier/action assignment.
 
-        This text is stored in fund_crs.action_rationale and displayed
-        in the fund detail UI.
-
         Args:
             tier: Final tier after overrides.
             action: Final action.
-            crs: Composite Recommendation Score.
-            qfs: Quantitative Fund Score (Layer 1).
-            fsas: FM Sector Alignment Score (Layer 2).
+            qfs: Quantitative Fund Score (0-100).
+            percentile: QFS percentile rank within category.
+            fsas: FM Sector Alignment Score, None if not shortlisted.
             override_reason: Human-readable override reason, if any.
+            is_shortlisted: Whether the fund was shortlisted.
 
         Returns:
             A concise rationale string.
         """
-        # Describe the score components
         parts: list[str] = []
 
         parts.append(
-            f"CRS {crs:.1f} (QFS {qfs:.1f} x 60% + FSAS {fsas:.1f} x 40%)"
+            f"QFS {qfs:.1f} (percentile {percentile:.0f}th in category)"
         )
+        parts.append(f"assigns to {tier} tier with {action} recommendation.")
 
-        # Describe the tier assignment
-        parts.append(f"assigns to {tier} tier with {action} recommendation")
+        if is_shortlisted and fsas is not None:
+            if fsas >= 70:
+                parts.append(
+                    f"Strong sector alignment (FSAS {fsas:.1f}) supports conviction."
+                )
+            elif fsas >= 40:
+                parts.append(
+                    f"Moderate sector alignment (FSAS {fsas:.1f})."
+                )
+            else:
+                parts.append(
+                    f"Weak sector alignment (FSAS {fsas:.1f}) — "
+                    "misaligned with current FM sector views."
+                )
+        elif not is_shortlisted:
+            parts.append("Not shortlisted — FSAS not computed.")
 
-        # Add score quality commentary
-        if qfs >= 70 and fsas >= 70:
-            parts.append(
-                "Strong quantitative metrics combined with favorable "
-                "sector alignment."
-            )
-        elif qfs >= 70 and fsas < 40:
-            parts.append(
-                "Strong quantitative metrics but poor alignment with current "
-                "FM sector views."
-            )
-        elif qfs < 40 and fsas >= 70:
-            parts.append(
-                "Weak quantitative metrics despite favorable sector alignment."
-            )
-        elif qfs < 40 and fsas < 40:
-            parts.append(
-                "Weak quantitative metrics compounded by unfavorable "
-                "sector positioning."
-            )
-        else:
-            parts.append(
-                "Moderate risk-return profile with mixed sector alignment."
-            )
-
-        # Append override information if applicable
         if override_reason:
             parts.append(f"Override applied: {override_reason}.")
 

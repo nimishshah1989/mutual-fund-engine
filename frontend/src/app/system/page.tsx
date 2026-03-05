@@ -16,13 +16,12 @@ import StatCard from "@/components/StatCard";
 import LoadingSkeleton from "@/components/LoadingSkeleton";
 import ErrorState from "@/components/ErrorState";
 
-type LayerValue = "qfs" | "fsas" | "crs" | "all";
+type LayerValue = "qfs" | "fsas" | "all";
 
 const LAYER_OPTIONS: { value: LayerValue; label: string }[] = [
-  { value: "all", label: "Full Pipeline (All Layers)" },
+  { value: "all", label: "Full Pipeline (QFS → Shortlist → FSAS → Recommend)" },
   { value: "qfs", label: "Layer 1 — Quantitative Fund Score" },
-  { value: "fsas", label: "Layer 2 — Sector Alignment Score" },
-  { value: "crs", label: "Layer 3 — Composite Recommendation Score" },
+  { value: "fsas", label: "Layer 2 — Sector Alignment Score (Shortlisted Only)" },
 ];
 
 /**

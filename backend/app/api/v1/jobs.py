@@ -25,17 +25,17 @@ router = APIRouter()
     "/fm-signal-recompute",
     response_model=ApiResponse[dict[str, Any]],
     status_code=200,
-    summary="Trigger FSAS + CRS recompute after FM signal update",
+    summary="Trigger FSAS + recommendation recompute after FM signal update",
 )
 async def trigger_fm_signal_recompute(
     background_tasks: BackgroundTasks,
 ) -> ApiResponse[dict[str, Any]]:
     """
-    Trigger an FSAS -> CRS recompute for all categories.
+    Trigger FSAS recompute for shortlisted funds and reassign recommendations.
     Typically called after the FM updates sector signals.
 
-    The recompute runs in the background so the API responds immediately.
-    Check the health endpoint for completion status.
+    QFS and shortlist are NOT recomputed (FM signal changes don't affect
+    quantitative fundamentals or the shortlist).
     """
     try:
         logger.info("fm_signal_recompute_api_triggered")
@@ -63,13 +63,13 @@ async def trigger_fm_signal_recompute(
     "/fm-signal-recompute/async",
     response_model=ApiResponse[dict[str, str]],
     status_code=202,
-    summary="Trigger FSAS + CRS recompute in background",
+    summary="Trigger FSAS + recommendation recompute in background",
 )
 async def trigger_fm_signal_recompute_async(
     background_tasks: BackgroundTasks,
 ) -> ApiResponse[dict[str, str]]:
     """
-    Trigger an FSAS -> CRS recompute in the background.
+    Trigger FSAS + recommendation recompute in the background.
     Returns immediately with a 202 Accepted. Use the health endpoint
     to monitor progress.
     """

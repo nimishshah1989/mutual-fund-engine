@@ -214,6 +214,67 @@ class FSASEngine:
 
         return fund_results
 
+    def get_alignment_summary(
+        self,
+        sector_contributions: dict[str, dict[str, Any]],
+    ) -> dict[str, Any]:
+        """
+        Build a per-fund alignment summary from sector contributions.
+
+        Returns:
+            Dict with:
+                - aligned_sectors: list of sectors where signal is OVERWEIGHT/ACCUMULATE
+                  AND fund has > 0% exposure
+                - misaligned_sectors: list of sectors where signal is UNDERWEIGHT/AVOID
+                  AND fund has > 2% exposure
+                - neutral_sectors: list of sectors with NEUTRAL signal
+                - avoid_exposure_pct: total % in AVOID sectors
+                - top_aligned: top 3 aligned sectors by positive contribution
+                - top_misaligned: top 3 misaligned sectors by negative contribution
+        """
+        aligned: list[dict[str, Any]] = []
+        misaligned: list[dict[str, Any]] = []
+        neutral: list[str] = []
+        avoid_exposure_pct = 0.0
+
+        for sector_name, data in sector_contributions.items():
+            signal = data.get("signal", "NEUTRAL")
+            exposure_pct = data.get("exposure_pct", 0.0)
+            contribution = data.get("contribution", 0.0)
+
+            if signal == "AVOID":
+                avoid_exposure_pct += exposure_pct
+
+            if signal in ("OVERWEIGHT", "ACCUMULATE") and exposure_pct > 0:
+                aligned.append({
+                    "sector": sector_name,
+                    "signal": signal,
+                    "exposure_pct": exposure_pct,
+                    "contribution": contribution,
+                })
+            elif signal in ("UNDERWEIGHT", "AVOID") and exposure_pct > 2.0:
+                misaligned.append({
+                    "sector": sector_name,
+                    "signal": signal,
+                    "exposure_pct": exposure_pct,
+                    "contribution": contribution,
+                })
+            elif signal == "NEUTRAL":
+                neutral.append(sector_name)
+
+        # Sort by contribution magnitude
+        aligned.sort(key=lambda x: x["contribution"], reverse=True)
+        misaligned.sort(key=lambda x: x["contribution"])
+
+        return {
+            "aligned_sectors": aligned,
+            "misaligned_sectors": misaligned,
+            "neutral_sectors": neutral,
+            "avoid_exposure_pct": round(avoid_exposure_pct, 2),
+            "top_aligned": aligned[:3],
+            "top_misaligned": misaligned[:3],
+        }
+
     def _empty_result(
         self,
         mstar_id: str,

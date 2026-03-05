@@ -1,5 +1,5 @@
 /* ------------------------------------------------------------------ */
-/*  API response types — verified against actual backend responses     */
+/*  API response types — v2: QFS-rank tiers, shortlist, no CRS        */
 /* ------------------------------------------------------------------ */
 
 /** Standard envelope returned by most endpoints */
@@ -69,10 +69,11 @@ export interface FundScoreOverview {
   available_horizons: number;
   category_universe_size: number;
   engine_version: string;
-  crs: number | null;
+  // v2: QFS-rank based tiers (no CRS)
   tier: string | null;
   action: string | null;
-  fsas: number | null;
+  qfs_rank: number | null;
+  category_rank_pct: number | null;
 }
 
 /* ---------- /api/v1/scores/{mstar_id} ---------- */
@@ -80,7 +81,7 @@ export interface FundScoreDetail {
   mstar_id: string;
   qfs: QFSDetail | null;
   fsas: FSASDetail | null;
-  crs: CRSDetail | null;
+  recommendation: RecommendationDetail | null;
 }
 
 export interface QFSDetail {
@@ -130,28 +131,28 @@ export interface SectorContribution {
   confidence_multiplier: number;
 }
 
-export interface CRSDetail {
+/* v2: Replaces CRSDetail */
+export interface RecommendationDetail {
   mstar_id: string;
   computed_date: string;
   qfs: number;
-  fsas: number;
-  qfs_weight: number;
-  fsas_weight: number;
-  crs: number;
+  fsas: number | null;
+  qfs_rank: number;
+  category_rank_pct: number;
+  is_shortlisted: boolean;
   tier: string;
   action: string;
   override_applied: boolean;
   override_reason: string | null;
   original_tier: string | null;
   action_rationale: string | null;
-  qfs_id: string;
-  fsas_id: string;
+  qfs_id: string | null;
+  fsas_id: string | null;
   engine_version: string;
   created_at: string;
 }
 
 /* ---------- /api/v1/signals ---------- */
-/* Response is: { success, data: { signals: FMSignal[] } } */
 export interface SignalsResponse {
   signals: FMSignal[];
 }
@@ -177,6 +178,91 @@ export interface SignalCreatePayload {
   notes?: string;
 }
 
+/* v2: Sector list with current signal */
+export interface SectorWithSignal {
+  sector_name: string;
+  signal: string | null;
+  confidence: string | null;
+  signal_weight: number | null;
+  notes: string | null;
+  effective_date: string | null;
+  updated_by: string | null;
+  last_updated: string | null;
+}
+
+export interface SectorListResponse {
+  sectors: SectorWithSignal[];
+}
+
+/* v2: Bulk signal update */
+export interface BulkSignalEntry {
+  sector_name: string;
+  signal: string;
+  confidence: string;
+  notes: string | null;
+}
+
+export interface BulkSignalUpdatePayload {
+  signals: BulkSignalEntry[];
+  updated_by: string;
+  effective_date?: string;
+  change_reason?: string;
+}
+
+export interface BulkSignalUpdateResponse {
+  updated_count: number;
+  unchanged_count: number;
+  changes: FMSignal[];
+}
+
+/* v2: Signal change history */
+export interface SignalChangeLogEntry {
+  id: string;
+  sector_name: string;
+  old_signal: string | null;
+  new_signal: string;
+  old_confidence: string | null;
+  new_confidence: string;
+  old_notes: string | null;
+  new_notes: string | null;
+  changed_by: string;
+  change_reason: string | null;
+  changed_at: string;
+}
+
+/* v2: Shortlist */
+export interface ShortlistItem {
+  mstar_id: string;
+  fund_name: string | null;
+  category_name: string;
+  qfs_score: number;
+  qfs_rank: number;
+  total_in_category: number;
+  shortlist_reason: string;
+  computed_date: string;
+  fsas: number | null;
+  tier: string | null;
+  action: string | null;
+  avoid_exposure_pct: number | null;
+  alignment_summary: AlignmentSummary | null;
+}
+
+export interface AlignmentSummary {
+  aligned_sectors: SectorAlignmentEntry[];
+  misaligned_sectors: SectorAlignmentEntry[];
+  neutral_sectors: string[];
+  avoid_exposure_pct: number;
+  top_aligned: SectorAlignmentEntry[];
+  top_misaligned: SectorAlignmentEntry[];
+}
+
+export interface SectorAlignmentEntry {
+  sector: string;
+  signal: string;
+  exposure_pct: number;
+  contribution: number;
+}
+
 /* ---------- /api/v1/ingest/logs ---------- */
 export interface IngestionLog {
   id: string;
@@ -192,17 +278,23 @@ export interface IngestionLog {
   created_at: string;
 }
 
-/* ---------- /api/v1/jobs/fm-signal-recompute ---------- */
+/* ---------- /api/v1/jobs/fm-signal-recompute (v2) ---------- */
 export interface RecomputeResult {
   job: string;
   status: string;
   triggered_by: string;
-  fsas: { categories_completed: number; categories_failed: number };
-  crs: { categories_completed: number; categories_failed: number };
+  fsas: { fund_count: number; status: string };
+  recommendation: {
+    fund_count: number;
+    tier_distribution: Record<string, number>;
+    shortlisted_count: number;
+    override_count: number;
+  };
   summary: {
     total_funds_rescored: number;
+    shortlisted_count: number;
     tier_distribution: Record<string, number>;
-    categories_with_overrides: string[];
+    override_count: number;
   };
   duration_seconds: number;
 }
@@ -214,7 +306,7 @@ export interface IngestPayload {
 
 /* ---------- /api/v1/scores/compute ---------- */
 export interface ScoreComputePayload {
-  layer: "qfs" | "fsas" | "crs" | "all";
+  layer: "qfs" | "fsas" | "all";
   category_name?: string;
   trigger_event?: string;
 }
@@ -233,5 +325,6 @@ export interface ScoreComputeCategoryResult {
   trigger_event: string;
   layers: Record<string, unknown>;
   tier_distribution: Record<string, number>;
+  shortlisted_count?: number;
   error: string | null;
 }

@@ -2,7 +2,7 @@
 /*  Centralised API client — all fetch calls go through here          */
 /* ------------------------------------------------------------------ */
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8001";
+const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "";
 
 /**
  * Generic fetch wrapper that handles:

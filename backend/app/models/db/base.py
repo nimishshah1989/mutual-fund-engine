@@ -19,7 +19,10 @@ from app.models.db.fund_sector_exposure import FundSectorExposure  # noqa: F401
 from app.models.db.sector_mapping import SectorMapping  # noqa: F401
 from app.models.db.fund_qfs import FundQFS  # noqa: F401
 from app.models.db.fund_fsas import FundFSAS  # noqa: F401
-from app.models.db.fund_crs import FundCRS  # noqa: F401
+from app.models.db.fund_crs import FundCRS  # noqa: F401 — legacy, kept for migration
+from app.models.db.fund_recommendation import FundRecommendation  # noqa: F401
+from app.models.db.fund_shortlist import FundShortlist  # noqa: F401
+from app.models.db.signal_change_log import SignalChangeLog  # noqa: F401
 from app.models.db.engine_config import EngineConfig  # noqa: F401
 from app.models.db.alert_events import AlertEvent  # noqa: F401
 from app.models.db.ingestion_log import IngestionLog  # noqa: F401

@@ -142,6 +142,9 @@ export default function FundDetailPage() {
   /* Data completeness is already 0-100, no multiplication needed */
   const dataCompleteness = fund.qfs?.data_completeness_pct ?? 0;
 
+  /* Recommendation data */
+  const rec = fund.recommendation;
+
   return (
     <div>
       <PageHeader
@@ -155,11 +158,11 @@ export default function FundDetailPage() {
         href="/funds"
         className="text-sm text-teal-600 hover:text-teal-700 mb-4 inline-block"
       >
-        &larr; Back to Scoreboard
+        &larr; Back to Fund Universe
       </Link>
 
       {/* ---------------------------------------------------------------- */}
-      {/*  Fund header card                                                */}
+      {/*  Fund header card — QFS as primary score                         */}
       {/* ---------------------------------------------------------------- */}
       <div className="bg-white rounded-xl border border-slate-200 p-6 mb-6">
         <div className="flex items-center justify-between">
@@ -171,16 +174,31 @@ export default function FundDetailPage() {
               Computed {fund.qfs?.computed_date ?? "--"}
             </p>
             <div className="flex items-center gap-3 mt-3">
-              <TierBadge tier={fund.crs?.tier ?? "--"} />
-              <ActionBadge action={fund.crs?.action ?? "--"} />
+              <TierBadge tier={rec?.tier ?? "--"} />
+              <ActionBadge action={rec?.action ?? "--"} />
+              {rec?.is_shortlisted && (
+                <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-semibold text-amber-700">
+                  Shortlisted
+                </span>
+              )}
             </div>
           </div>
           <div className="text-right">
-            <p className="text-xs text-slate-400">Composite Recommendation Score</p>
+            <p className="text-xs text-slate-400">Quantitative Fund Score</p>
             <p className="text-5xl font-bold font-mono text-teal-600">
-              {formatScore(fund.crs?.crs)}
+              {formatScore(fund.qfs?.qfs)}
             </p>
             <p className="text-sm text-slate-400 font-mono">/100</p>
+            {rec?.qfs_rank != null && (
+              <p className="text-sm text-slate-500 mt-1 font-mono">
+                Rank #{rec.qfs_rank}
+                {rec.category_rank_pct != null && (
+                  <span className="text-xs text-slate-400 ml-1">
+                    ({Math.round(rec.category_rank_pct)}th pct)
+                  </span>
+                )}
+              </p>
+            )}
           </div>
         </div>
       </div>
@@ -247,163 +265,190 @@ export default function FundDetailPage() {
           <h3 className="text-base font-semibold text-slate-800 mb-4">
             Layer 2: Sector Alignment Score
           </h3>
-          <div className="text-center mb-4">
-            <span className="text-4xl font-bold font-mono text-teal-600">
-              {formatScore(fund.fsas?.fsas)}
-            </span>
-            <span className="text-lg text-slate-400 font-mono">/100</span>
-          </div>
-
-          {/* Avoid exposure */}
-          {fund.fsas && (
-            <div className="mb-4">
-              <div className="flex items-center justify-between">
-                <span className="text-xs text-slate-500">Avoid Exposure</span>
-                <span className="text-xs font-mono font-semibold text-red-600">
-                  {fund.fsas.avoid_exposure_pct.toFixed(1)}%
+          {fund.fsas ? (
+            <>
+              <div className="text-center mb-4">
+                <span className="text-4xl font-bold font-mono text-teal-600">
+                  {formatScore(fund.fsas.fsas)}
                 </span>
+                <span className="text-lg text-slate-400 font-mono">/100</span>
               </div>
-              <div className="flex items-center justify-between mt-1">
-                <span className="text-xs text-slate-500">Stale Holdings</span>
-                <span
-                  className={`text-xs font-bold uppercase px-2.5 py-0.5 rounded ${
-                    fund.fsas.stale_holdings_flag
-                      ? "bg-amber-100 text-amber-700"
-                      : "bg-slate-100 text-slate-500"
-                  }`}
-                >
-                  {fund.fsas.stale_holdings_flag ? "Yes" : "No"}
-                </span>
-              </div>
-            </div>
-          )}
 
-          {/* Sector contribution chart */}
-          <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">
-            Sector Contributions
-          </p>
-          {sectorChartData.length > 0 ? (
-            <ResponsiveContainer width="100%" height={Math.max(180, sectorChartData.length * 28)}>
-              <BarChart
-                data={sectorChartData}
-                layout="vertical"
-                margin={{ left: 0, right: 10, top: 5, bottom: 5 }}
-              >
-                <XAxis type="number" hide />
-                <YAxis
-                  type="category"
-                  dataKey="sector"
-                  tick={{ fontSize: 10, fill: "#94a3b8" }}
-                  width={90}
-                />
-                <Tooltip
-                  contentStyle={{
-                    borderRadius: "8px",
-                    border: "1px solid #e2e8f0",
-                    fontSize: "12px",
-                  }}
-                  formatter={(value) => [
-                    typeof value === "number" ? value.toFixed(2) : String(value),
-                    "Contribution",
-                  ]}
-                />
-                <Bar dataKey="contribution" radius={[0, 4, 4, 0]}>
-                  {sectorChartData.map((entry, idx) => (
-                    <Cell
-                      key={idx}
-                      fill={entry.contribution >= 0 ? "#059669" : "#dc2626"}
+              {/* Avoid exposure */}
+              <div className="mb-4">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs text-slate-500">Avoid Exposure</span>
+                  <span className="text-xs font-mono font-semibold text-red-600">
+                    {fund.fsas.avoid_exposure_pct.toFixed(1)}%
+                  </span>
+                </div>
+                <div className="flex items-center justify-between mt-1">
+                  <span className="text-xs text-slate-500">Stale Holdings</span>
+                  <span
+                    className={`text-xs font-bold uppercase px-2.5 py-0.5 rounded ${
+                      fund.fsas.stale_holdings_flag
+                        ? "bg-amber-100 text-amber-700"
+                        : "bg-slate-100 text-slate-500"
+                    }`}
+                  >
+                    {fund.fsas.stale_holdings_flag ? "Yes" : "No"}
+                  </span>
+                </div>
+              </div>
+
+              {/* Sector contribution chart */}
+              <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">
+                Sector Contributions
+              </p>
+              {sectorChartData.length > 0 ? (
+                <ResponsiveContainer width="100%" height={Math.max(180, sectorChartData.length * 28)}>
+                  <BarChart
+                    data={sectorChartData}
+                    layout="vertical"
+                    margin={{ left: 0, right: 10, top: 5, bottom: 5 }}
+                  >
+                    <XAxis type="number" hide />
+                    <YAxis
+                      type="category"
+                      dataKey="sector"
+                      tick={{ fontSize: 10, fill: "#94a3b8" }}
+                      width={90}
                     />
-                  ))}
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
+                    <Tooltip
+                      contentStyle={{
+                        borderRadius: "8px",
+                        border: "1px solid #e2e8f0",
+                        fontSize: "12px",
+                      }}
+                      formatter={(value) => [
+                        typeof value === "number" ? value.toFixed(2) : String(value),
+                        "Contribution",
+                      ]}
+                    />
+                    <Bar dataKey="contribution" radius={[0, 4, 4, 0]}>
+                      {sectorChartData.map((entry, idx) => (
+                        <Cell
+                          key={idx}
+                          fill={entry.contribution >= 0 ? "#059669" : "#dc2626"}
+                        />
+                      ))}
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
+              ) : (
+                <p className="text-sm text-slate-400 text-center py-6">
+                  No sector data available
+                </p>
+              )}
+            </>
           ) : (
-            <p className="text-sm text-slate-400 text-center py-6">
-              No sector data available
-            </p>
+            <div className="text-center py-8">
+              <p className="text-sm text-slate-400">
+                FSAS not computed for this fund
+              </p>
+              <p className="text-xs text-slate-400 mt-1">
+                Only shortlisted funds receive FSAS scoring
+              </p>
+            </div>
           )}
         </div>
 
-        {/* ---- Layer 3: Composite Recommendation Score ---- */}
+        {/* ---- Recommendation ---- */}
         <div className="bg-white rounded-xl border border-slate-200 p-6">
           <h3 className="text-base font-semibold text-slate-800 mb-4">
-            Layer 3: Composite Recommendation Score
+            Recommendation
           </h3>
-          <div className="text-center mb-4">
-            <span className="text-4xl font-bold font-mono text-teal-600">
-              {formatScore(fund.crs?.crs)}
-            </span>
-            <span className="text-lg text-slate-400 font-mono">/100</span>
-          </div>
+          {rec ? (
+            <>
+              {/* Tier and action */}
+              <div className="flex items-center justify-center gap-3 mb-4">
+                <TierBadge tier={rec.tier} />
+                <ActionBadge action={rec.action} />
+              </div>
 
-          {/* Weights */}
-          <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">
-            Score Composition
-          </p>
-          <div className="space-y-3">
-            <div>
-              <div className="flex items-center justify-between mb-1">
-                <span className="text-sm text-slate-600">Quantitative Score Weight</span>
-                <span className="text-sm font-mono font-semibold text-slate-700">
-                  {Math.round((fund.crs?.qfs_weight ?? 0) * 100)}%
-                </span>
+              {/* Key metrics */}
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-slate-600">QFS Rank</span>
+                  <span className="text-sm font-mono font-semibold text-slate-800">
+                    #{rec.qfs_rank}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-slate-600">Category Percentile</span>
+                  <span className="text-sm font-mono font-semibold text-slate-800">
+                    {rec.category_rank_pct != null
+                      ? `${Math.round(rec.category_rank_pct)}th`
+                      : "--"}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-slate-600">Shortlisted</span>
+                  <span
+                    className={`text-xs font-bold uppercase px-2.5 py-0.5 rounded ${
+                      rec.is_shortlisted
+                        ? "bg-amber-100 text-amber-700"
+                        : "bg-slate-100 text-slate-500"
+                    }`}
+                  >
+                    {rec.is_shortlisted ? "Yes" : "No"}
+                  </span>
+                </div>
+                {rec.fsas != null && (
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-slate-600">FSAS</span>
+                    <span className="text-sm font-mono font-semibold text-teal-600">
+                      {formatScore(rec.fsas)}
+                    </span>
+                  </div>
+                )}
               </div>
-              <div className="w-full bg-slate-100 rounded-full h-2">
-                <div
-                  className="bg-teal-500 h-2 rounded-full"
-                  style={{
-                    width: `${Math.round((fund.crs?.qfs_weight ?? 0) * 100)}%`,
-                  }}
-                />
-              </div>
-            </div>
-            <div>
-              <div className="flex items-center justify-between mb-1">
-                <span className="text-sm text-slate-600">Sector Alignment Weight</span>
-                <span className="text-sm font-mono font-semibold text-slate-700">
-                  {Math.round((fund.crs?.fsas_weight ?? 0) * 100)}%
-                </span>
-              </div>
-              <div className="w-full bg-slate-100 rounded-full h-2">
-                <div
-                  className="bg-blue-500 h-2 rounded-full"
-                  style={{
-                    width: `${Math.round((fund.crs?.fsas_weight ?? 0) * 100)}%`,
-                  }}
-                />
-              </div>
-            </div>
-          </div>
 
-          {/* Override info */}
-          <div className="mt-4 pt-4 border-t border-slate-100">
-            <div className="flex items-center justify-between">
-              <span className="text-sm text-slate-600">Override Applied</span>
-              <span
-                className={`text-xs font-bold uppercase px-2.5 py-0.5 rounded ${
-                  fund.crs?.override_applied
-                    ? "bg-amber-100 text-amber-700"
-                    : "bg-slate-100 text-slate-500"
-                }`}
-              >
-                {fund.crs?.override_applied ? "Yes" : "No"}
-              </span>
-            </div>
-            {fund.crs?.override_reason && (
+              {/* Override info */}
+              <div className="mt-4 pt-4 border-t border-slate-100">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-slate-600">Override Applied</span>
+                  <span
+                    className={`text-xs font-bold uppercase px-2.5 py-0.5 rounded ${
+                      rec.override_applied
+                        ? "bg-amber-100 text-amber-700"
+                        : "bg-slate-100 text-slate-500"
+                    }`}
+                  >
+                    {rec.override_applied ? "Yes" : "No"}
+                  </span>
+                </div>
+                {rec.override_reason && (
+                  <p className="text-xs text-slate-400 mt-1">
+                    {rec.override_reason}
+                  </p>
+                )}
+                {rec.original_tier && rec.override_applied && (
+                  <p className="text-xs text-slate-400 mt-1">
+                    Original tier: {rec.original_tier}
+                  </p>
+                )}
+              </div>
+
+              {/* Action rationale */}
+              {rec.action_rationale && (
+                <div className="mt-4 pt-4 border-t border-slate-100">
+                  <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1">
+                    Action Rationale
+                  </p>
+                  <p className="text-xs text-slate-600 leading-relaxed">
+                    {rec.action_rationale}
+                  </p>
+                </div>
+              )}
+            </>
+          ) : (
+            <div className="text-center py-8">
+              <p className="text-sm text-slate-400">
+                No recommendation data yet
+              </p>
               <p className="text-xs text-slate-400 mt-1">
-                {fund.crs.override_reason}
-              </p>
-            )}
-          </div>
-
-          {/* Action rationale */}
-          {fund.crs?.action_rationale && (
-            <div className="mt-4 pt-4 border-t border-slate-100">
-              <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1">
-                Action Rationale
-              </p>
-              <p className="text-xs text-slate-600 leading-relaxed">
-                {fund.crs.action_rationale}
+                Run the scoring pipeline to generate recommendations
               </p>
             </div>
           )}
@@ -506,7 +551,9 @@ export default function FundDetailPage() {
         </h3>
         {sectorArray.length === 0 ? (
           <p className="text-sm text-slate-400 text-center py-8">
-            No sector contribution data available
+            {fund.fsas
+              ? "No sector contribution data available"
+              : "FSAS not computed — only shortlisted funds receive sector alignment scoring"}
           </p>
         ) : (
           <div className="overflow-x-auto">

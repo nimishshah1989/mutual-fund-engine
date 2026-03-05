@@ -1,8 +1,10 @@
 """
 models/schemas/scores.py
 
-Pydantic schemas for the QFS, FSAS, and CRS scoring API endpoints.
+Pydantic schemas for the QFS, FSAS, shortlist, and recommendation API endpoints.
 Covers request bodies, response models, and score detail breakdowns.
+
+v2: Removed CRS-related schemas. Added shortlist and recommendation schemas.
 """
 
 from __future__ import annotations
@@ -23,7 +25,6 @@ class ComputeLayer(str, enum.Enum):
     """Which scoring layer to compute."""
     QFS = "qfs"
     FSAS = "fsas"
-    CRS = "crs"
     ALL = "all"
 
 
@@ -35,7 +36,7 @@ class ScoreComputeRequest(BaseModel):
     )
     layer: ComputeLayer = Field(
         default=ComputeLayer.QFS,
-        description="Which scoring layer to run. 'all' runs QFS -> FSAS -> CRS.",
+        description="Which scoring layer to run. 'all' runs QFS -> shortlist -> FSAS -> recommend.",
     )
     trigger_event: str = Field(
         default="manual_compute",
@@ -129,28 +130,55 @@ class FSASDetail(BaseModel):
 
 
 # ---------------------------------------------------------------------------
-# CRS Response schemas
+# Recommendation Response schemas (replaces CRS)
 # ---------------------------------------------------------------------------
 
-class CRSDetail(BaseModel):
-    """Complete CRS detail for one fund — tier, action, and breakdown."""
+class RecommendationDetail(BaseModel):
+    """Fund recommendation detail — tier from QFS percentile, FSAS separate."""
     mstar_id: str
     computed_date: date
-    qfs: float = Field(..., description="QFS component (0-100)")
-    fsas: float = Field(..., description="FSAS component (0-100)")
-    qfs_weight: float = Field(0.60, description="Weight applied to QFS")
-    fsas_weight: float = Field(0.40, description="Weight applied to FSAS")
-    crs: float = Field(..., description="Composite Recommendation Score (0-100)")
+    qfs: float = Field(..., description="QFS score (0-100)")
+    fsas: Optional[float] = Field(None, description="FSAS score, only for shortlisted funds")
+    qfs_rank: int = Field(..., description="Rank within category (1 = best)")
+    category_rank_pct: float = Field(..., description="Percentile rank (0-100, 100 = best)")
+    is_shortlisted: bool = Field(False, description="Whether fund is in top N for category")
     tier: str = Field(..., description="CORE / QUALITY / WATCH / CAUTION / EXIT")
-    action: str = Field(..., description="BUY / SIP / HOLD / REDUCE / EXIT")
+    action: str = Field(..., description="BUY / SIP / HOLD_PLUS / HOLD / REDUCE / EXIT")
     override_applied: bool = Field(False, description="Whether a hard override was applied")
     override_reason: Optional[str] = Field(None, description="Human-readable override reason")
     original_tier: Optional[str] = Field(None, description="Tier before override")
     action_rationale: Optional[str] = Field(None, description="Auto-generated rationale text")
-    qfs_id: Optional[UUID] = Field(None, description="FK to the QFS record used")
-    fsas_id: Optional[UUID] = Field(None, description="FK to the FSAS record used")
+    qfs_id: Optional[UUID] = None
+    fsas_id: Optional[UUID] = None
     engine_version: Optional[str] = None
     created_at: Optional[datetime] = None
+
+    model_config = {"from_attributes": True}
+
+
+# ---------------------------------------------------------------------------
+# Shortlist schemas
+# ---------------------------------------------------------------------------
+
+class ShortlistItem(BaseModel):
+    """A shortlisted fund with its QFS rank and optional FSAS data."""
+    mstar_id: str
+    fund_name: Optional[str] = None
+    category_name: str
+    qfs_score: float
+    qfs_rank: int
+    total_in_category: int
+    shortlist_reason: str = "top_n_by_qfs"
+    computed_date: date
+
+    # Enriched from recommendation table
+    fsas: Optional[float] = None
+    tier: Optional[str] = None
+    action: Optional[str] = None
+    avoid_exposure_pct: Optional[float] = None
+
+    # Enriched from FSAS detail
+    alignment_summary: Optional[dict[str, Any]] = None
 
     model_config = {"from_attributes": True}
 
@@ -161,19 +189,13 @@ class CRSDetail(BaseModel):
 
 class FundScoreDetail(BaseModel):
     """
-    Full score detail for a single fund — combines QFS, FSAS, and CRS.
+    Full score detail for a single fund — combines QFS, FSAS, and recommendation.
     Used on the fund deep-dive page to show all scoring layers.
     """
     mstar_id: str
-
-    # QFS (Layer 1)
     qfs: Optional[ScoreDetail] = None
-
-    # FSAS (Layer 2)
     fsas: Optional[FSASDetail] = None
-
-    # CRS (Layer 3)
-    crs: Optional[CRSDetail] = None
+    recommendation: Optional[RecommendationDetail] = None
 
 
 # ---------------------------------------------------------------------------
@@ -181,7 +203,7 @@ class FundScoreDetail(BaseModel):
 # ---------------------------------------------------------------------------
 
 class ScoreOverviewItem(BaseModel):
-    """Summary QFS record for the overview list endpoint."""
+    """Summary record for the overview list endpoint."""
     mstar_id: str
     fund_name: Optional[str] = Field(None, description="Fund name from master data")
     category_name: Optional[str] = Field(None, description="SEBI category name")
@@ -197,11 +219,11 @@ class ScoreOverviewItem(BaseModel):
     category_universe_size: Optional[int] = None
     engine_version: Optional[str] = None
 
-    # CRS fields (populated when CRS data is available)
-    crs: Optional[float] = Field(None, description="Composite Recommendation Score")
+    # Recommendation fields (populated from fund_recommendation)
     tier: Optional[str] = Field(None, description="CORE / QUALITY / WATCH / CAUTION / EXIT")
     action: Optional[str] = Field(None, description="BUY / SIP / HOLD / REDUCE / EXIT")
-    fsas: Optional[float] = Field(None, description="FM Sector Alignment Score")
+    qfs_rank: Optional[int] = Field(None, description="Rank within category")
+    category_rank_pct: Optional[float] = Field(None, description="Percentile rank in category")
 
     model_config = {"from_attributes": True}
 
@@ -241,6 +263,7 @@ class PipelineComputeResult(BaseModel):
     trigger_event: Optional[str] = None
     layers: Optional[dict[str, Any]] = None
     tier_distribution: Optional[dict[str, int]] = None
+    shortlisted_count: Optional[int] = None
     error: Optional[str] = None
 
 
@@ -249,3 +272,4 @@ class PipelineComputeResponse(BaseModel):
     results: list[PipelineComputeResult]
     total_categories: int
     total_funds_computed: int
+    total_shortlisted: int = 0

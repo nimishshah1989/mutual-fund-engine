@@ -40,8 +40,9 @@ interface TierActionRow {
   tier: string;
   buy: number;
   sip: number;
+  hold_plus: number;
   hold: number;
-  switch_: number;
+  reduce: number;
   exit: number;
   total: number;
 }
@@ -82,16 +83,14 @@ export default function DashboardPage() {
       ? funds.reduce((sum, f) => sum + (f.qfs ?? 0), 0) / funds.length
       : 0;
 
-  const avgCRS =
-    funds.length > 0
-      ? funds.reduce((sum, f) => sum + (f.crs ?? 0), 0) / funds.length
-      : 0;
-
   const coreCount = funds.filter(
     (f) => (f.tier ?? "").toUpperCase() === "CORE",
   ).length;
   const qualityCount = funds.filter(
     (f) => (f.tier ?? "").toUpperCase() === "QUALITY",
+  ).length;
+  const shortlistedCount = funds.filter(
+    (f) => f.qfs_rank != null && f.qfs_rank <= 5,
   ).length;
 
   /* Data freshness from health checks */
@@ -111,19 +110,20 @@ export default function DashboardPage() {
     return Object.entries(map).map(([name, value]) => ({ name, value }));
   })();
 
-  /* Tier x Action breakdown */
+  /* Tier x Action breakdown — v2 actions */
   const tierActionRows: TierActionRow[] = (() => {
     const map: Record<string, TierActionRow> = {};
     funds.forEach((f) => {
       const t = (f.tier ?? "UNSCORED").toUpperCase();
       if (!map[t]) {
-        map[t] = { tier: t, buy: 0, sip: 0, hold: 0, switch_: 0, exit: 0, total: 0 };
+        map[t] = { tier: t, buy: 0, sip: 0, hold_plus: 0, hold: 0, reduce: 0, exit: 0, total: 0 };
       }
       const a = (f.action ?? "").toUpperCase();
       if (a === "BUY") map[t].buy++;
       else if (a === "SIP") map[t].sip++;
+      else if (a === "HOLD_PLUS") map[t].hold_plus++;
       else if (a === "HOLD") map[t].hold++;
-      else if (a === "SWITCH") map[t].switch_++;
+      else if (a === "REDUCE") map[t].reduce++;
       else if (a === "EXIT") map[t].exit++;
       map[t].total++;
     });
@@ -171,14 +171,14 @@ export default function DashboardPage() {
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
         <StatCard label="Total Funds" value={String(totalFunds)} colored />
         <StatCard
-          label="Avg Quantitative Score"
+          label="Avg QFS"
           value={formatScore(avgQFS)}
           colored
         />
         <StatCard
-          label="Avg Composite Score"
-          value={formatScore(avgCRS)}
-          colored
+          label="Shortlisted"
+          value={String(shortlistedCount)}
+          subtext="Top funds per category"
         />
         <StatCard
           label="Core Tier"
@@ -355,7 +355,7 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {/* Tier x Action breakdown table */}
+      {/* Tier x Action breakdown table — v2 actions */}
       <div className="bg-white rounded-xl border border-slate-200 p-6 mt-6">
         <h3 className="text-base font-semibold text-slate-800 mb-4">
           Tier &times; Action Breakdown
@@ -378,10 +378,13 @@ export default function DashboardPage() {
                   SIP
                 </th>
                 <th className="text-right px-4 py-3 text-xs font-semibold text-slate-400 uppercase tracking-wider">
+                  HOLD+
+                </th>
+                <th className="text-right px-4 py-3 text-xs font-semibold text-slate-400 uppercase tracking-wider">
                   HOLD
                 </th>
                 <th className="text-right px-4 py-3 text-xs font-semibold text-slate-400 uppercase tracking-wider">
-                  SWITCH
+                  REDUCE
                 </th>
                 <th className="text-right px-4 py-3 text-xs font-semibold text-slate-400 uppercase tracking-wider">
                   EXIT
@@ -407,10 +410,13 @@ export default function DashboardPage() {
                     {row.sip || "--"}
                   </td>
                   <td className="px-4 py-3 text-right text-sm font-mono text-slate-700">
+                    {row.hold_plus || "--"}
+                  </td>
+                  <td className="px-4 py-3 text-right text-sm font-mono text-slate-700">
                     {row.hold || "--"}
                   </td>
                   <td className="px-4 py-3 text-right text-sm font-mono text-slate-700">
-                    {row.switch_ || "--"}
+                    {row.reduce || "--"}
                   </td>
                   <td className="px-4 py-3 text-right text-sm font-mono text-slate-700">
                     {row.exit || "--"}
