@@ -83,7 +83,7 @@ export default function FundDetailPage() {
     return (
       <div>
         <PageHeader
-          emoji={"\uD83D\uDCC8"}
+          emoji="📈"
           title="Fund Detail"
           subtitle={mstarId}
         />
@@ -100,7 +100,7 @@ export default function FundDetailPage() {
     return (
       <div>
         <PageHeader
-          emoji={"\uD83D\uDCC8"}
+          emoji="📈"
           title="Fund Detail"
           subtitle={mstarId}
         />
@@ -148,7 +148,7 @@ export default function FundDetailPage() {
   return (
     <div>
       <PageHeader
-        emoji={"\uD83D\uDCC8"}
+        emoji="📈"
         title="Fund Detail"
         subtitle={fund.mstar_id}
       />

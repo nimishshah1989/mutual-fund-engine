@@ -134,7 +134,7 @@ export default function DashboardPage() {
     return (
       <div>
         <PageHeader
-          emoji={"\uD83D\uDCCA"}
+          emoji="📊"
           title="Dashboard"
           subtitle="MF Recommendation Engine"
         />
@@ -150,7 +150,7 @@ export default function DashboardPage() {
     return (
       <div>
         <PageHeader
-          emoji={"\uD83D\uDCCA"}
+          emoji="📊"
           title="Dashboard"
           subtitle="MF Recommendation Engine"
         />
@@ -162,7 +162,7 @@ export default function DashboardPage() {
   return (
     <div>
       <PageHeader
-        emoji={"\uD83D\uDCCA"}
+        emoji="📊"
         title="Dashboard"
         subtitle="MF Recommendation Engine"
       />

@@ -122,7 +122,7 @@ export default function FundUniversePage() {
     return (
       <div>
         <PageHeader
-          emoji="\uD83C\uDFC6"
+          emoji="🏆"
           title="Fund Universe"
           subtitle="Master fund scoreboard"
         />
@@ -135,7 +135,7 @@ export default function FundUniversePage() {
     return (
       <div>
         <PageHeader
-          emoji="\uD83C\uDFC6"
+          emoji="🏆"
           title="Fund Universe"
           subtitle="Master fund scoreboard"
         />
@@ -148,7 +148,7 @@ export default function FundUniversePage() {
     return (
       <div>
         <PageHeader
-          emoji="\uD83C\uDFC6"
+          emoji="🏆"
           title="Fund Universe"
           subtitle="Master fund scoreboard"
         />
@@ -163,7 +163,7 @@ export default function FundUniversePage() {
   return (
     <div>
       <PageHeader
-        emoji="\uD83C\uDFC6"
+        emoji="🏆"
         title="Fund Universe"
         subtitle={`All ${totalFunds} funds with QFS scores and QFS-based tier classification`}
       />
