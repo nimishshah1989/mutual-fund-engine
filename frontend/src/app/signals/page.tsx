@@ -279,9 +279,9 @@ export default function SignalsPage() {
     return (
       <div>
         <PageHeader
-          emoji="\uD83D\uDCC8"
+          emoji="📈"
           title="FM Sector Signals"
-          subtitle="Manage sector views \u2014 bulk edit all sectors at once"
+          subtitle="Manage sector views — bulk edit all sectors at once"
         />
         <LoadingSkeleton variant="table" />
       </div>
@@ -296,9 +296,9 @@ export default function SignalsPage() {
     return (
       <div>
         <PageHeader
-          emoji="\uD83D\uDCC8"
+          emoji="📈"
           title="FM Sector Signals"
-          subtitle="Manage sector views \u2014 bulk edit all sectors at once"
+          subtitle="Manage sector views — bulk edit all sectors at once"
         />
         <ErrorState message={error} onRetry={fetchSectors} />
       </div>
@@ -312,9 +312,9 @@ export default function SignalsPage() {
   return (
     <div>
       <PageHeader
-        emoji="\uD83D\uDCC8"
+        emoji="📈"
         title="FM Sector Signals"
-        subtitle="Manage sector views \u2014 bulk edit all sectors at once"
+        subtitle="Manage sector views — bulk edit all sectors at once"
       />
 
       {/* Updated By + Save button bar */}
@@ -677,7 +677,7 @@ export default function SignalsPage() {
                               {entry.changed_by}
                             </td>
                             <td className="px-4 py-3 text-sm text-slate-500 max-w-[200px] truncate">
-                              {entry.change_reason ?? "\u2014"}
+                              {entry.change_reason ?? "—"}
                             </td>
                           </tr>
                         ))}

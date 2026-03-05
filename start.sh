@@ -9,8 +9,13 @@
 
 set -e
 
-echo "[mf-engine] Starting FastAPI backend on 127.0.0.1:8000..."
+# Run Alembic migrations before starting the app
+echo "[mf-engine] Running database migrations..."
 cd /app
+python -m alembic upgrade head
+echo "[mf-engine] Migrations complete."
+
+echo "[mf-engine] Starting FastAPI backend on 127.0.0.1:8000..."
 python -m uvicorn app.main:app \
   --host 127.0.0.1 \
   --port 8000 \

@@ -299,9 +299,9 @@ export default function ShortlistPage() {
     return (
       <div>
         <PageHeader
-          emoji="\u2B50"
+          emoji="⭐"
           title="Shortlisted Funds"
-          subtitle="Top funds per category \u2014 FM recommendation output"
+          subtitle="Top funds per category — FM recommendation output"
         />
         <LoadingSkeleton variant="card" cardCount={4} />
         <div className="mt-6">
@@ -316,9 +316,9 @@ export default function ShortlistPage() {
     return (
       <div>
         <PageHeader
-          emoji="\u2B50"
+          emoji="⭐"
           title="Shortlisted Funds"
-          subtitle="Top funds per category \u2014 FM recommendation output"
+          subtitle="Top funds per category — FM recommendation output"
         />
         <ErrorState message={error} onRetry={fetchData} />
       </div>
@@ -330,9 +330,9 @@ export default function ShortlistPage() {
     return (
       <div>
         <PageHeader
-          emoji="\u2B50"
+          emoji="⭐"
           title="Shortlisted Funds"
-          subtitle="Top funds per category \u2014 FM recommendation output"
+          subtitle="Top funds per category — FM recommendation output"
         />
         <EmptyState
           title="No shortlisted funds yet"
@@ -349,9 +349,9 @@ export default function ShortlistPage() {
   return (
     <div>
       <PageHeader
-        emoji="\u2B50"
+        emoji="⭐"
         title="Shortlisted Funds"
-        subtitle="Top funds per category \u2014 FM recommendation output"
+        subtitle={`Top funds per category — FM recommendation output${funds.length > 0 && funds[0].computed_date ? ` · Scored: ${formatDate(funds[0].computed_date)}` : ""}`}
       />
 
       {/* Summary stat cards */}

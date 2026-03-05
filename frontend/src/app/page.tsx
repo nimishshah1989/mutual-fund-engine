@@ -100,6 +100,14 @@ export default function DashboardPage() {
     ? formatTimeAgo(morningstarFreshness.last_run)
     : "--";
 
+  /* Last scored date — most recent computed_date from funds */
+  const lastScoredDate = funds.length > 0
+    ? funds.reduce((latest, f) => {
+        if (!f.computed_date) return latest;
+        return f.computed_date > latest ? f.computed_date : latest;
+      }, "")
+    : null;
+
   /* Tier distribution for donut chart */
   const tierCounts: TierCount[] = (() => {
     const map: Record<string, number> = {};
@@ -164,7 +172,11 @@ export default function DashboardPage() {
       <PageHeader
         emoji="📊"
         title="Dashboard"
-        subtitle="MF Recommendation Engine"
+        subtitle={
+          lastScoredDate
+            ? `MF Recommendation Engine · Last scored: ${formatDate(lastScoredDate)}`
+            : "MF Recommendation Engine"
+        }
       />
 
       {/* Stat cards */}
@@ -190,7 +202,11 @@ export default function DashboardPage() {
           value={String(qualityCount)}
           subtext={`${totalFunds > 0 ? ((qualityCount / totalFunds) * 100).toFixed(0) : 0}% of total`}
         />
-        <StatCard label="Data Freshness" value={dataFreshness} />
+        <StatCard
+          label="Last Scored"
+          value={lastScoredDate ? formatDate(lastScoredDate) : "--"}
+          subtext={`Data: ${dataFreshness}`}
+        />
       </div>
 
       {/* Two-column section: donut + system health */}

@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback, useMemo } from "react";
 import Link from "next/link";
 import { apiFetch } from "@/lib/api";
-import { formatScore } from "@/lib/formatters";
+import { formatScore, formatDate } from "@/lib/formatters";
 import type { ApiResponse, FundScoreOverview } from "@/types/api";
 import PageHeader from "@/components/PageHeader";
 import TierBadge from "@/components/TierBadge";
@@ -165,7 +165,7 @@ export default function FundUniversePage() {
       <PageHeader
         emoji="🏆"
         title="Fund Universe"
-        subtitle={`All ${totalFunds} funds with QFS scores and QFS-based tier classification`}
+        subtitle={`All ${totalFunds} funds with QFS scores and QFS-based tier classification${funds.length > 0 && funds[0].computed_date ? ` · Scored: ${formatDate(funds[0].computed_date)}` : ""}`}
       />
 
       {/* Filter controls */}
