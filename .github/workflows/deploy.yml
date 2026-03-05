@@ -1,0 +1,72 @@
+name: Deploy MF Engine
+
+on:
+  push:
+    branches: [main]
+
+env:
+  AWS_REGION: ap-south-1
+  ECR_REPOSITORY: mf-engine
+  EC2_HOST: 13.206.50.251
+
+jobs:
+  deploy:
+    name: Build & Deploy
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build and push Docker image
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          docker build --platform linux/amd64 \
+            -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG \
+            -t $ECR_REGISTRY/$ECR_REPOSITORY:latest \
+            .
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:latest
+
+      - name: Deploy to EC2
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ env.EC2_HOST }}
+          username: ec2-user
+          key: ${{ secrets.EC2_SSH_KEY }}
+          script: |
+            # Login to ECR
+            aws ecr get-login-password --region ap-south-1 | \
+              docker login --username AWS --password-stdin \
+              765425735663.dkr.ecr.ap-south-1.amazonaws.com
+
+            # Pull latest image
+            docker pull 765425735663.dkr.ecr.ap-south-1.amazonaws.com/mf-engine:latest
+
+            # Stop and remove old container
+            docker stop mf-engine || true
+            docker rm mf-engine || true
+
+            # Run new container
+            docker run -d \
+              --name mf-engine \
+              --restart always \
+              -p 8080:3000 \
+              --env-file /home/ec2-user/mf-engine.env \
+              765425735663.dkr.ecr.ap-south-1.amazonaws.com/mf-engine:latest
+
+            # Clean up old images
+            docker image prune -f
