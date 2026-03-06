@@ -293,6 +293,8 @@ async def backfill_pulse(
         async with get_standalone_session() as session:
             fetcher = NavFetcherService(session)
             service = PulseDataService(session)
+            # Auto-populate AMFI codes from ISIN matching (if missing)
+            await fetcher.populate_amfi_codes()
             await fetcher.backfill_benchmark(years=years)
             await fetcher.backfill_all_fund_navs(years=years)
             await service.compute_all_snapshots()

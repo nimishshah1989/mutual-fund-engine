@@ -92,6 +92,105 @@ class NavFetcherService:
             for row in result.all()
         ]
 
+    async def populate_amfi_codes(self) -> dict[str, Any]:
+        """
+        Auto-populate amfi_code in fund_master by matching ISINs from the AMFI bulk file.
+
+        The AMFI NAVAll.txt file contains:  SchemeCode;ISIN_Growth;ISIN_Reinvest;Name;NAV;Date
+        We match ISIN_Growth against fund_master.isin to fill in amfi_code.
+
+        This should be called before backfill/refresh if amfi_codes are missing.
+        """
+        import httpx
+
+        # Step 1: Get all funds with ISIN but no amfi_code
+        from sqlalchemy import or_
+
+        result = await self.session.execute(
+            select(FundMaster.mstar_id, FundMaster.isin)
+            .where(
+                FundMaster.isin.isnot(None),
+                FundMaster.isin != "",
+                FundMaster.is_eligible.is_(True),
+                FundMaster.deleted_at.is_(None),
+                or_(FundMaster.amfi_code.is_(None), FundMaster.amfi_code == ""),
+            )
+        )
+        funds_needing_amfi = {row.isin: row.mstar_id for row in result.all()}
+
+        if not funds_needing_amfi:
+            logger.info("populate_amfi_codes_skip", reason="all funds already have amfi_code")
+            return {"status": "skipped", "matched": 0, "total_needing": 0}
+
+        logger.info("populate_amfi_codes_start", funds_needing=len(funds_needing_amfi))
+
+        # Step 2: Download and parse AMFI bulk file to build ISIN → scheme_code mapping
+        url = "https://www.amfiindia.com/spages/NAVAll.txt"
+        try:
+            loop = asyncio.get_running_loop()
+
+            def _download() -> str:
+                with httpx.Client(timeout=60.0, follow_redirects=True) as client:
+                    resp = client.get(url)
+                    resp.raise_for_status()
+                    return resp.text
+
+            raw_text = await asyncio.wait_for(
+                loop.run_in_executor(None, _download),
+                timeout=90.0,
+            )
+        except Exception as exc:
+            logger.error("populate_amfi_codes_download_failed", error=str(exc))
+            return {"status": "error", "error": str(exc)}
+
+        # Build ISIN → scheme_code lookup
+        isin_to_scheme: dict[str, str] = {}
+        for line in raw_text.split("\n"):
+            parts = line.strip().split(";")
+            if len(parts) < 6:
+                continue
+            scheme_code = parts[0].strip()
+            isin_growth = parts[1].strip()
+            isin_reinvest = parts[2].strip()
+
+            if not scheme_code.isdigit():
+                continue
+
+            # Map both growth and reinvest ISINs to scheme code
+            if isin_growth:
+                isin_to_scheme[isin_growth] = scheme_code
+            if isin_reinvest:
+                isin_to_scheme[isin_reinvest] = scheme_code
+
+        logger.info("populate_amfi_codes_parsed", isin_count=len(isin_to_scheme))
+
+        # Step 3: Match and update
+        matched = 0
+        for isin, mstar_id in funds_needing_amfi.items():
+            scheme_code = isin_to_scheme.get(isin)
+            if scheme_code:
+                await self.session.execute(
+                    FundMaster.__table__.update()
+                    .where(FundMaster.mstar_id == mstar_id)
+                    .values(amfi_code=scheme_code)
+                )
+                matched += 1
+
+        if matched:
+            await self.session.commit()
+
+        logger.info(
+            "populate_amfi_codes_complete",
+            matched=matched, unmatched=len(funds_needing_amfi) - matched,
+        )
+
+        return {
+            "status": "completed",
+            "total_needing": len(funds_needing_amfi),
+            "matched": matched,
+            "unmatched": len(funds_needing_amfi) - matched,
+        }
+
     def _parse_mftool_nav_data(
         self, raw_data: dict[str, Any], mstar_id: str,
     ) -> list[dict[str, Any]]:

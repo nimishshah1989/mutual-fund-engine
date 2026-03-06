@@ -59,6 +59,9 @@ async def run_daily_pulse_refresh() -> None:
             fetcher = NavFetcherService(session)
             service = PulseDataService(session)
 
+            # Step 0: Ensure AMFI codes are populated (matches ISIN, idempotent)
+            await fetcher.populate_amfi_codes()
+
             # Step 1: Refresh benchmark (yfinance, ~10 rows, <5 seconds)
             bench_result = await fetcher.refresh_benchmark(days=10)
             logger.info("daily_pulse_benchmark_done", result=bench_result)
