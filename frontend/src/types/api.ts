@@ -214,4 +214,5 @@ export interface BenchmarkRefreshResponse {
   rows_upserted: number;
   fetched_at?: string;
   reason?: string;
+  source?: string;
 }

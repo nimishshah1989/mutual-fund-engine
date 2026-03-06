@@ -248,6 +248,10 @@ class ScoreOverviewItem(BaseModel):
     qfs_percentile: Optional[float] = Field(None, description="QFS percentile in category")
     matrix_position: Optional[str] = Field(None, description="e.g. HIGH_HIGH, MID_LOW")
 
+    # Override visibility
+    override_applied: Optional[bool] = Field(None, description="Whether a hard override was applied")
+    override_reason: Optional[str] = Field(None, description="Human-readable override reason")
+
     model_config = {"from_attributes": True}
 
 

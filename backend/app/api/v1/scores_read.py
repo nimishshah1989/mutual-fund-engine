@@ -124,6 +124,9 @@ async def list_scores(
                 item_data["fm_score_percentile"] = _safe_float(rec.fm_score_percentile)
                 item_data["qfs_percentile"] = _safe_float(rec.qfs_percentile)
                 item_data["matrix_position"] = rec.matrix_position
+                # Override visibility
+                item_data["override_applied"] = rec.override_applied
+                item_data["override_reason"] = rec.override_reason
 
             items.append(ScoreOverviewItem(**item_data))
 

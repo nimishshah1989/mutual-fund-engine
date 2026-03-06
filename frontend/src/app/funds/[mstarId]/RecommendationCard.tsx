@@ -99,9 +99,17 @@ export default function RecommendationCard({
             </div>
             {rec.fm_score != null && (
               <div className="flex items-center justify-between">
-                <span className="text-sm text-slate-600">FM Score</span>
-                <span className="text-sm font-mono font-semibold text-teal-600">
-                  {formatScore(rec.fm_score)}
+                <span className="text-sm text-slate-600">FM Score (Raw)</span>
+                <span
+                  className={`text-sm font-mono font-semibold ${
+                    rec.fm_score > 0
+                      ? "text-emerald-600"
+                      : rec.fm_score < 0
+                      ? "text-red-600"
+                      : "text-slate-600"
+                  }`}
+                >
+                  {rec.fm_score > 0 ? "+" : ""}{formatScore(rec.fm_score)}
                 </span>
               </div>
             )}

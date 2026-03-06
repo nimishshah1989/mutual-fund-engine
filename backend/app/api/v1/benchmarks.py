@@ -1,10 +1,11 @@
 """
 api/v1/benchmarks.py
 
-Benchmark sector weights API — read-only display + manual refresh.
+Benchmark sector weights API — read-only display + manual refresh + NIFTY 50 seed.
 
-- GET  /benchmarks         — Latest benchmark sector weights (NIFTY 50)
-- POST /benchmarks/refresh — Trigger re-fetch from Morningstar GSSB API
+- GET  /benchmarks              — Latest benchmark sector weights (NIFTY 50)
+- POST /benchmarks/refresh      — Trigger re-fetch from Morningstar GSSB API
+- POST /benchmarks/seed-nifty50 — Seed hardcoded NIFTY 50 weights (fallback)
 """
 
 import structlog
@@ -131,4 +132,55 @@ async def refresh_benchmark_weights(
         raise AppException(
             message="Failed to refresh benchmark weights",
             error_code="BENCHMARK_REFRESH_ERROR",
+        )
+
+
+@router.post(
+    "/seed-nifty50",
+    response_model=ApiResponse[BenchmarkRefreshResponse],
+    status_code=201,
+    summary="Seed NIFTY 50 sector weights from hardcoded NSE data",
+)
+@limiter.limit(RATE_COMPUTE)
+async def seed_nifty50_weights(
+    request: Request,
+    _api_key: str = Depends(require_api_key),
+    db: AsyncSession = Depends(get_db),
+) -> ApiResponse[BenchmarkRefreshResponse]:
+    """
+    Seed benchmark sector weights from hardcoded NIFTY 50 composition (NSE March 2026).
+    Use this when Morningstar GSSB API returns empty for the benchmark index.
+    """
+    try:
+        from app.services.nifty_benchmark import seed_nifty50_weights as do_seed
+
+        data_loader = ScoringDataLoader(db, ScoreRepository(db))
+        mstar_id_config = await data_loader.load_engine_config("benchmark_mstar_id")
+        name_config = await data_loader.load_engine_config("benchmark_name")
+
+        benchmark_mstar_id = (
+            mstar_id_config.get("value", "F00000VBPN") if mstar_id_config else "F00000VBPN"
+        )
+        benchmark_name = name_config.get("value", "NIFTY 50") if name_config else "NIFTY 50"
+
+        result = await do_seed(
+            session=db,
+            benchmark_name=benchmark_name,
+            benchmark_mstar_id=benchmark_mstar_id,
+        )
+
+        logger.info(
+            "benchmark_nifty50_seed_result",
+            status=result.get("status"),
+            sector_count=result.get("sector_count", 0),
+        )
+
+        return ApiResponse.ok(
+            data=BenchmarkRefreshResponse(**result)
+        )
+    except Exception as exc:
+        logger.error("benchmark_nifty50_seed_failed", error=str(exc))
+        raise AppException(
+            message="Failed to seed NIFTY 50 benchmark weights",
+            error_code="BENCHMARK_SEED_ERROR",
         )

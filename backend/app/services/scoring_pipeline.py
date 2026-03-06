@@ -67,9 +67,11 @@ class ScoringPipeline:
             # Load FMS scores for all funds in category
             fsas_records = await svc.score_repo.get_latest_fsas_by_mstar_ids(fund_ids)
             fsas_lookup: dict[str, float] = {}
+            raw_fsas_lookup: dict[str, Optional[float]] = {}
             avoid_lookup: dict[str, float] = {}
             for f in fsas_records:
                 fsas_lookup[f.mstar_id] = float(f.fsas) if f.fsas is not None else 0.0
+                raw_fsas_lookup[f.mstar_id] = float(f.raw_fsas) if f.raw_fsas is not None else None
                 avoid_lookup[f.mstar_id] = (
                     float(f.avoid_exposure_pct) if f.avoid_exposure_pct is not None else 0.0
                 )
@@ -158,8 +160,8 @@ class ScoringPipeline:
                     "qfs_rank": rank,
                     "category_rank_pct": round(qfs_pctl, 2),
                     "is_shortlisted": False,
-                    # v3 matrix fields
-                    "fm_score": fms_value,
+                    # v3 matrix fields — fm_score stores actual raw FSAS (not normalized)
+                    "fm_score": raw_fsas_lookup.get(mstar_id),
                     "fm_score_percentile": round(fms_pctl, 2),
                     "qfs_percentile": round(qfs_pctl, 2),
                     "matrix_row": classification["matrix_row"],

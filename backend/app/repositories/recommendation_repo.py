@@ -113,8 +113,11 @@ class RecommendationRepository(BaseRepository[FundRecommendation]):
     async def get_matrix_summary(self) -> list[dict]:
         """
         Get fund count and average scores per matrix cell.
-        Returns a list of dicts with matrix_position, fund_count, avg_qfs, avg_fms.
+        Returns exactly 9 rows (one per matrix position) with tier/action
+        derived from the MATRIX_CELLS constant (pre-override values).
         """
+        from app.engines.matrix_engine import MATRIX_CELLS
+
         latest_date_subq = (
             select(
                 FundRecommendation.mstar_id,
@@ -129,8 +132,6 @@ class RecommendationRepository(BaseRepository[FundRecommendation]):
                 FundRecommendation.matrix_position,
                 FundRecommendation.matrix_row,
                 FundRecommendation.matrix_col,
-                FundRecommendation.tier,
-                FundRecommendation.action,
                 func.count(FundRecommendation.id).label("fund_count"),
                 func.avg(FundRecommendation.qfs).label("avg_qfs"),
                 func.avg(FundRecommendation.fm_score).label("avg_fms"),
@@ -145,25 +146,44 @@ class RecommendationRepository(BaseRepository[FundRecommendation]):
                 FundRecommendation.matrix_position,
                 FundRecommendation.matrix_row,
                 FundRecommendation.matrix_col,
-                FundRecommendation.tier,
-                FundRecommendation.action,
             )
             .order_by(FundRecommendation.matrix_position)
         )
 
-        return [
-            {
+        rows = []
+        found_positions: set[str] = set()
+        for row in result.all():
+            # Derive tier/action from the matrix definition (pre-override)
+            cell_def = MATRIX_CELLS.get(row.matrix_position, ("HOLD", "WATCH"))
+            action, tier = cell_def
+            found_positions.add(row.matrix_position)
+            rows.append({
                 "matrix_position": row.matrix_position,
                 "matrix_row": row.matrix_row,
                 "matrix_col": row.matrix_col,
-                "tier": row.tier,
-                "action": row.action,
+                "tier": tier,
+                "action": action,
                 "fund_count": row.fund_count,
                 "avg_qfs": float(row.avg_qfs) if row.avg_qfs else 0.0,
                 "avg_fms": float(row.avg_fms) if row.avg_fms else 0.0,
-            }
-            for row in result.all()
-        ]
+            })
+
+        # Backfill empty cells so frontend always gets all 9 positions
+        for pos, (action, tier) in MATRIX_CELLS.items():
+            if pos not in found_positions:
+                row_part, col_part = pos.split("_")
+                rows.append({
+                    "matrix_position": pos,
+                    "matrix_row": row_part,
+                    "matrix_col": col_part,
+                    "tier": tier,
+                    "action": action,
+                    "fund_count": 0,
+                    "avg_qfs": 0.0,
+                    "avg_fms": 0.0,
+                })
+
+        return rows
 
     async def get_funds_by_matrix_position(
         self, position: str,

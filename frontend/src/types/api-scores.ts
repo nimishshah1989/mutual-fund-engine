@@ -26,6 +26,8 @@ export interface FundScoreOverview {
   fm_score_percentile?: number | null;
   qfs_percentile?: number | null;
   matrix_position?: string | null;
+  override_applied?: boolean | null;
+  override_reason?: string | null;
 }
 
 /* ---------- /api/v1/scores/{mstar_id} ---------- */

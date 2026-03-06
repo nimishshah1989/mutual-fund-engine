@@ -64,18 +64,15 @@ class BenchmarkService:
             raw_data = await fetcher.fetch_sector_breakdown(benchmark_mstar_id)
 
         if not raw_data:
-            logger.error(
+            logger.warning(
                 "benchmark_refresh_empty_response",
                 mstar_id=benchmark_mstar_id,
                 benchmark=benchmark_name,
                 api_endpoint=f"GlobalStockSectorBreakdown/mstarid/{benchmark_mstar_id}",
-                hint="Verify benchmark_mstar_id is correct and GSSB API is accessible for this ID",
+                fallback="nifty50_manual",
             )
-            return {
-                "status": "error",
-                "reason": "empty_response_from_morningstar",
-                "benchmark_mstar_id": benchmark_mstar_id,
-            }
+            # Fallback: seed from hardcoded NIFTY 50 weights
+            return await self._seed_nifty50_fallback(benchmark_name, benchmark_mstar_id)
 
         today = date.today()
         now = datetime.now(timezone.utc)
@@ -99,12 +96,10 @@ class BenchmarkService:
                 "benchmark_refresh_no_sectors_parsed",
                 mstar_id=benchmark_mstar_id,
                 raw_keys=list(raw_data.keys())[:20],
+                fallback="nifty50_manual",
             )
-            return {
-                "status": "error",
-                "reason": "no_sector_weights_parsed",
-                "benchmark_mstar_id": benchmark_mstar_id,
-            }
+            # Fallback: seed from hardcoded NIFTY 50 weights
+            return await self._seed_nifty50_fallback(benchmark_name, benchmark_mstar_id)
 
         rows_affected = await self.repo.upsert_weights(records)
         total_weight = sum(r["weight_pct"] for r in records)
@@ -124,6 +119,7 @@ class BenchmarkService:
             "sector_count": len(records),
             "total_weight_pct": round(total_weight, 2),
             "rows_upserted": rows_affected,
+            "source": "morningstar_gssb",
             "fetched_at": now.isoformat(),
         }
 
@@ -165,6 +161,25 @@ class BenchmarkService:
             return True, None
         return age > max_age_days, age
 
+    async def _seed_nifty50_fallback(
+        self,
+        benchmark_name: str,
+        benchmark_mstar_id: str,
+    ) -> dict[str, Any]:
+        """Seed NIFTY 50 weights from hardcoded NSE data as a fallback."""
+        from app.services.nifty_benchmark import seed_nifty50_weights
+
+        logger.info(
+            "benchmark_nifty50_fallback",
+            benchmark=benchmark_name,
+            mstar_id=benchmark_mstar_id,
+        )
+        return await seed_nifty50_weights(
+            session=self.session,
+            benchmark_name=benchmark_name,
+            benchmark_mstar_id=benchmark_mstar_id,
+        )
+
     async def ensure_fresh_weights(
         self,
         benchmark_mstar_id: str,
@@ -192,10 +207,14 @@ class BenchmarkService:
                 logger.error(
                     "benchmark_auto_refresh_failed",
                     error=str(exc),
-                    fallback="using_cached_weights" if age is not None else "no_fallback",
+                    fallback="nifty50_manual" if age is None else "using_cached_weights",
                 )
                 if age is None:
-                    # First-time setup with no cache — cannot proceed
-                    return {}
+                    # First-time setup — try NIFTY 50 hardcoded fallback
+                    try:
+                        await self._seed_nifty50_fallback(benchmark_name, benchmark_mstar_id)
+                    except Exception as seed_exc:
+                        logger.error("nifty50_seed_failed", error=str(seed_exc))
+                        return {}
 
         return await self.get_latest_weights(benchmark_name)

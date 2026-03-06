@@ -31,22 +31,35 @@ export default function FMScoreCard({ fsas, recommendation }: FMScoreCardProps) 
         .sort((a, b) => b.contribution - a.contribution)
     : [];
 
-  /* Use fm_score from recommendation if available, otherwise fall back to fsas.fsas */
-  const displayScore =
-    recommendation?.fm_score != null ? recommendation.fm_score : fsas?.fsas ?? null;
+  /* Raw FSAS is the actual alignment score (not normalized 0-100) */
+  const rawScore = fsas?.raw_fsas ?? recommendation?.fm_score ?? null;
+  /* Normalized FSAS is the 0-100 percentile-ready value */
+  const normalizedScore = fsas?.fsas ?? null;
 
   return (
     <div className="bg-white rounded-xl border border-slate-200 p-6">
       <h3 className="text-base font-semibold text-slate-800 mb-4">
         Layer 2: FM Alignment Score
       </h3>
-      {fsas || displayScore != null ? (
+      {fsas || rawScore != null ? (
         <>
           <div className="text-center mb-4">
-            <span className="text-4xl font-bold font-mono text-teal-600">
-              {formatScore(displayScore)}
+            <span
+              className={`text-4xl font-bold font-mono ${
+                rawScore != null && rawScore > 0
+                  ? "text-emerald-600"
+                  : rawScore != null && rawScore < 0
+                  ? "text-red-600"
+                  : "text-teal-600"
+              }`}
+            >
+              {rawScore != null ? `${rawScore > 0 ? "+" : ""}${rawScore.toFixed(2)}` : "--"}
             </span>
-            <span className="text-lg text-slate-400 font-mono">/100</span>
+            {normalizedScore != null && (
+              <span className="text-sm text-slate-400 font-mono ml-2">
+                ({formatScore(normalizedScore)}/100 normalized)
+              </span>
+            )}
           </div>
 
           {/* Avoid exposure & stale holdings flags */}

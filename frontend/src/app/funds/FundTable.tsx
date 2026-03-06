@@ -151,7 +151,22 @@ export default function FundTable({
                   <ScoreCell value={fund.qfs} />
                 </td>
                 <td className="px-4 py-3 text-right">
-                  <ScoreCell value={fund.fm_score ?? null} />
+                  {fund.fm_score != null ? (
+                    <span
+                      className={`text-sm font-mono tabular-nums font-semibold ${
+                        fund.fm_score > 0
+                          ? "text-emerald-600"
+                          : fund.fm_score < 0
+                          ? "text-red-600"
+                          : "text-slate-600"
+                      }`}
+                    >
+                      {fund.fm_score > 0 ? "+" : ""}
+                      {fund.fm_score.toFixed(1)}
+                    </span>
+                  ) : (
+                    <span className="text-sm text-slate-400 font-mono">--</span>
+                  )}
                 </td>
                 <td className="px-4 py-3 text-center">
                   <MatrixBadge position={fund.matrix_position} />
@@ -160,6 +175,14 @@ export default function FundTable({
                   <div className="flex items-center justify-center gap-1.5">
                     <TierBadge tier={fund.tier ?? "--"} />
                     <ActionBadge action={fund.action ?? "--"} />
+                    {fund.override_applied && (
+                      <span
+                        title={fund.override_reason ?? "Override applied"}
+                        className="inline-flex items-center rounded bg-amber-50 border border-amber-200 px-1 py-0.5 text-[10px] font-medium text-amber-700 cursor-help"
+                      >
+                        OVR
+                      </span>
+                    )}
                   </div>
                 </td>
                 <td className="px-4 py-3 text-right text-sm font-mono tabular-nums text-slate-600">

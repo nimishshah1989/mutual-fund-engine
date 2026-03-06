@@ -40,6 +40,7 @@ class BenchmarkRefreshResponse(BaseModel):
     rows_upserted: int = 0
     fetched_at: Optional[str] = None
     reason: Optional[str] = None
+    source: Optional[str] = Field(None, description="Data source: morningstar_gssb or nse_nifty50_manual")
 
 
 class MatrixCellSummary(BaseModel):
