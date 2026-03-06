@@ -69,7 +69,23 @@ RUN addgroup --system appgroup && adduser --system --ingroup appgroup appuser
 RUN chown -R appuser:appgroup /app
 USER appuser
 
+# Validate all Python imports resolve at build time (catches missing deps)
+RUN python -c "\
+from app.main import app; \
+from app.api.health import router; \
+from app.api.v1.ingestion import router; \
+from app.api.v1.scores import router; \
+from app.api.v1.scores_read import router; \
+from app.api.v1.signals import router; \
+from app.api.v1.jobs import router; \
+print('All imports OK')"
+
 # Only port 3000 is exposed (FastAPI is internal on 127.0.0.1:8000)
 EXPOSE 3000
+
+# Health check — validates both FastAPI and Next.js are responding
+HEALTHCHECK --interval=30s --timeout=5s --start-period=45s --retries=3 \
+  CMD python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health')" && \
+      node -e "const h=require('http');h.get('http://127.0.0.1:3000',r=>{process.exit(r.statusCode===200?0:1)}).on('error',()=>process.exit(1))"
 
 CMD ["./start.sh"]
