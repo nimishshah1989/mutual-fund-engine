@@ -24,7 +24,7 @@ Hard Override Rules (can only DOWNGRADE, never upgrade):
 from __future__ import annotations
 
 from datetime import date, timedelta
-from typing import Any, Optional, Tuple
+from typing import Any, Optional
 
 import structlog
 
@@ -36,7 +36,7 @@ class TierEngine:
 
     # Percentile-based tier thresholds — percentile >= threshold → assigned that tier
     # Ordered highest first. Below 20 → EXIT.
-    TIER_PERCENTILE_THRESHOLDS: list[Tuple[str, float]] = [
+    TIER_PERCENTILE_THRESHOLDS: list[tuple[str, float]] = [
         ("CORE", 90.0),
         ("QUALITY", 70.0),
         ("WATCH", 40.0),
@@ -68,54 +68,21 @@ class TierEngine:
     FUND_AGE_MONTHS: int = 36
 
     def assign_tier_by_percentile(self, percentile: float) -> str:
-        """
-        Assign a tier based on the QFS percentile rank within category.
-
-        Args:
-            percentile: Percentile rank 0-100 (100 = best in category).
-
-        Returns:
-            Tier string: CORE, QUALITY, WATCH, CAUTION, or EXIT.
-        """
+        """Assign tier based on QFS percentile rank (0-100) within category."""
         for tier_name, threshold in self.TIER_PERCENTILE_THRESHOLDS:
             if percentile >= threshold:
                 return tier_name
         return "EXIT"
 
     def assign_action(self, tier: str) -> str:
-        """
-        Map a tier to its recommended action.
-
-        Args:
-            tier: One of CORE, QUALITY, WATCH, CAUTION, EXIT.
-
-        Returns:
-            Action string: BUY, SIP, HOLD, REDUCE, or EXIT.
-        """
+        """Map a tier to its recommended action."""
         return self.TIER_ACTIONS.get(tier, "HOLD")
 
     def refine_action_with_fsas(
-        self,
-        tier: str,
-        base_action: str,
-        fsas: Optional[float],
-        avoid_exposure_pct: float = 0.0,
+        self, tier: str, base_action: str,
+        fsas: Optional[float], avoid_exposure_pct: float = 0.0,
     ) -> str:
-        """
-        Refine the action based on FSAS alignment (for shortlisted funds only).
-
-        If FSAS is high, the fund can get a stronger action within its tier.
-        If FSAS is low, the action may be weakened.
-
-        Args:
-            tier: Current tier from QFS percentile.
-            base_action: Base action from tier mapping.
-            fsas: FSAS score (0-100), None if not shortlisted.
-            avoid_exposure_pct: Percentage of portfolio in AVOID sectors.
-
-        Returns:
-            Refined action string.
-        """
+        """Refine action based on FSAS alignment (shortlisted funds only)."""
         if fsas is None:
             return base_action
 
@@ -142,7 +109,7 @@ class TierEngine:
         tier: str,
         action: str,
         fund_data: dict[str, Any],
-    ) -> Tuple[str, str, bool, Optional[str], Optional[str]]:
+    ) -> tuple[str, str, bool, Optional[str], Optional[str]]:
         """
         Apply hard override rules that can DOWNGRADE a tier (never upgrade).
 
@@ -181,7 +148,8 @@ class TierEngine:
                     f"{self.AVOID_EXPOSURE_THRESHOLD}%)"
                 )
 
-        # Rule 2: Manager tenure < 12 months → force to WATCH minimum
+        # Rule 2: Fund too young (< 12 months since inception) → force to WATCH minimum
+        # Note: uses inception_date as proxy — actual manager tenure data not available
         inception_date = fund_data.get("inception_date")
         reference_date = fund_data.get("reference_date", date.today())
         if inception_date is not None:
@@ -197,8 +165,8 @@ class TierEngine:
                         + (reference_date.month - inception_date.month)
                     )
                     override_reasons.append(
-                        f"Manager tenure < {self.MANAGER_TENURE_MONTHS} months "
-                        f"(~{months_active} months)"
+                        f"Fund age < {self.MANAGER_TENURE_MONTHS} months "
+                        f"since inception (~{months_active} months)"
                     )
 
         # Rule 3: Data completeness < 60% → force to WATCH minimum + flag
@@ -262,30 +230,11 @@ class TierEngine:
         return final_tier, final_action, override_applied, override_reason, override_flag
 
     def generate_rationale(
-        self,
-        tier: str,
-        action: str,
-        qfs: float,
-        percentile: float,
-        fsas: Optional[float],
-        override_reason: Optional[str],
+        self, tier: str, action: str, qfs: float, percentile: float,
+        fsas: Optional[float], override_reason: Optional[str],
         is_shortlisted: bool = False,
     ) -> str:
-        """
-        Generate a human-readable rationale for the tier/action assignment.
-
-        Args:
-            tier: Final tier after overrides.
-            action: Final action.
-            qfs: Quantitative Fund Score (0-100).
-            percentile: QFS percentile rank within category.
-            fsas: FM Sector Alignment Score, None if not shortlisted.
-            override_reason: Human-readable override reason, if any.
-            is_shortlisted: Whether the fund was shortlisted.
-
-        Returns:
-            A concise rationale string.
-        """
+        """Generate a human-readable rationale for the tier/action assignment."""
         parts: list[str] = []
 
         parts.append(

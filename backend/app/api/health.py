@@ -13,13 +13,14 @@ from datetime import datetime, timedelta, timezone
 from typing import Any, Optional
 
 import structlog
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings
 from app.core.database import get_db
 from app.core.dependencies import get_settings
+from app.core.rate_limit import RATE_HEALTH, limiter
 from app.models.db.ingestion_log import IngestionLog
 
 logger = structlog.get_logger(__name__)
@@ -35,7 +36,9 @@ STALENESS_THRESHOLDS = {
 
 
 @router.get("/health")
+@limiter.limit(RATE_HEALTH)
 async def health_check(
+    request: Request,
     settings: Settings = Depends(get_settings),
 ) -> dict[str, str]:
     """
@@ -44,13 +47,15 @@ async def health_check(
     """
     return {
         "status": "ok",
-        "version": "1.0.0",
+        "version": settings.app_version,
         "environment": settings.app_env,
     }
 
 
 @router.get("/health/ready")
+@limiter.limit(RATE_HEALTH)
 async def readiness_check(
+    request: Request,
     settings: Settings = Depends(get_settings),
     db: AsyncSession = Depends(get_db),
 ) -> dict[str, Any]:
@@ -62,7 +67,7 @@ async def readiness_check(
     """
     result: dict[str, Any] = {
         "status": "ok",
-        "version": "1.0.0",
+        "version": settings.app_version,
         "environment": settings.app_env,
         "checks": {},
     }
@@ -106,7 +111,7 @@ async def _check_database(db: AsyncSession) -> dict[str, Any]:
         logger.error("health_db_check_failed", error=str(exc))
         return {
             "status": "error",
-            "error": str(exc),
+            "error": "database_check_failed",
         }
 
 
@@ -166,7 +171,7 @@ async def _check_data_freshness(db: AsyncSession) -> dict[str, Any]:
             )
             freshness[feed_name] = {
                 "status": "error",
-                "error": str(exc),
+                "error": "freshness_check_failed",
                 "is_stale": True,
             }
 

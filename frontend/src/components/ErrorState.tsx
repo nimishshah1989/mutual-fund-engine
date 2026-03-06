@@ -26,6 +26,7 @@ export default function ErrorState({ message, onRetry }: ErrorStateProps) {
       {onRetry && (
         <button
           onClick={onRetry}
+          aria-label="Retry the failed operation"
           className="mt-4 bg-teal-600 text-white font-medium px-4 py-2 rounded-lg hover:bg-teal-700 transition-colors text-sm"
         >
           Try Again

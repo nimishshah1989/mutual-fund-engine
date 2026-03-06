@@ -1,9 +1,17 @@
 """
 repositories/score_repo.py
 
-Repository for fund_qfs, fund_fsas, fund_shortlist, fund_recommendation,
-and score_audit_log tables. Handles upsert (INSERT ... ON CONFLICT) for
-all score records and retrieval queries for the API layer.
+Facade repository that composes QFS, FSAS, shortlist, recommendation,
+and audit sub-repositories. Provides backward-compatible access via
+delegation so that existing consumers (scores.py, scoring_service.py)
+do not need import changes.
+
+For new code, prefer importing the domain-specific repositories directly:
+  - QFSRepository       (qfs_repo.py)
+  - FSASRepository      (fsas_repo.py)
+  - ShortlistRepository (shortlist_repo.py)
+  - RecommendationRepository (recommendation_repo.py)
+  - AuditRepository     (audit_repo.py)
 """
 
 from __future__ import annotations
@@ -11,8 +19,6 @@ from __future__ import annotations
 from datetime import date
 from typing import Optional
 
-from sqlalchemy import func, select
-from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.db.fund_fsas import FundFSAS
@@ -20,88 +26,50 @@ from app.models.db.fund_qfs import FundQFS
 from app.models.db.fund_recommendation import FundRecommendation
 from app.models.db.fund_shortlist import FundShortlist
 from app.models.db.score_audit_log import ScoreAuditLog
-from app.repositories.base import BaseRepository
+from app.repositories.audit_repo import AuditRepository
+from app.repositories.fsas_repo import FSASRepository
+from app.repositories.qfs_repo import QFSRepository
+from app.repositories.recommendation_repo import RecommendationRepository
+from app.repositories.shortlist_repo import ShortlistRepository
 
 
-class ScoreRepository(BaseRepository[FundQFS]):
-    """Repository for QFS, FSAS, shortlist, and recommendation persistence."""
+class ScoreRepository:
+    """
+    Backward-compatible facade that delegates to domain-specific repositories.
 
-    model = FundQFS
+    Sub-repositories are accessible as attributes for direct use:
+        repo = ScoreRepository(session)
+        repo.qfs.get_qfs_history(mstar_id)
+
+    All original methods are preserved as thin delegates so existing call
+    sites (e.g. score_repo.bulk_upsert_qfs(...)) continue to work unchanged.
+    """
 
     def __init__(self, session: AsyncSession) -> None:
-        super().__init__(session)
+        self.session = session
+        self.qfs = QFSRepository(session)
+        self.fsas = FSASRepository(session)
+        self.shortlist = ShortlistRepository(session)
+        self.recommendation = RecommendationRepository(session)
+        self.audit = AuditRepository(session)
 
     # ===================================================================
-    # QFS methods
+    # QFS delegates
     # ===================================================================
 
     async def upsert_qfs(self, record: dict) -> FundQFS:
-        """Insert a QFS record, or update if (mstar_id, computed_date) already exists."""
-        stmt = pg_insert(FundQFS).values(**record)
-        update_keys = [
-            k for k in record if k not in ("mstar_id", "computed_date")
-        ]
-        stmt = stmt.on_conflict_do_update(
-            constraint="uq_qfs_mstar_date",
-            set_={key: stmt.excluded[key] for key in update_keys},
-        )
-        stmt = stmt.returning(FundQFS)
-        result = await self.session.execute(stmt)
-        await self.session.flush()
-        return result.scalar_one()
+        return await self.qfs.upsert_qfs(record)
 
     async def bulk_upsert_qfs(self, records: list[dict]) -> int:
-        """Bulk upsert QFS records. Returns the number of rows affected."""
-        if not records:
-            return 0
-
-        update_keys = [
-            k for k in records[0] if k not in ("mstar_id", "computed_date")
-        ]
-        stmt = pg_insert(FundQFS).values(records)
-        stmt = stmt.on_conflict_do_update(
-            constraint="uq_qfs_mstar_date",
-            set_={key: stmt.excluded[key] for key in update_keys},
-        )
-        result = await self.session.execute(stmt)
-        await self.session.flush()
-        return result.rowcount
+        return await self.qfs.bulk_upsert_qfs(records)
 
     async def get_latest_qfs(self, mstar_id: str) -> Optional[FundQFS]:
-        """Get the most recent QFS record for a specific fund."""
-        result = await self.session.execute(
-            select(FundQFS)
-            .where(FundQFS.mstar_id == mstar_id)
-            .order_by(FundQFS.computed_date.desc())
-            .limit(1)
-        )
-        return result.scalar_one_or_none()
+        return await self.qfs.get_latest_qfs(mstar_id)
 
     async def get_latest_qfs_by_mstar_ids(
         self, mstar_ids: list[str]
     ) -> list[FundQFS]:
-        """Get the latest QFS record for each fund in the provided list."""
-        if not mstar_ids:
-            return []
-
-        latest_date_subq = (
-            select(
-                FundQFS.mstar_id,
-                func.max(FundQFS.computed_date).label("max_date"),
-            )
-            .where(FundQFS.mstar_id.in_(mstar_ids))
-            .group_by(FundQFS.mstar_id)
-            .subquery()
-        )
-
-        result = await self.session.execute(
-            select(FundQFS).join(
-                latest_date_subq,
-                (FundQFS.mstar_id == latest_date_subq.c.mstar_id)
-                & (FundQFS.computed_date == latest_date_subq.c.max_date),
-            )
-        )
-        return list(result.scalars().all())
+        return await self.qfs.get_latest_qfs_by_mstar_ids(mstar_ids)
 
     async def get_latest_qfs_by_category(
         self,
@@ -112,292 +80,81 @@ class ScoreRepository(BaseRepository[FundQFS]):
         page: int = 1,
         limit: int = 50,
     ) -> tuple[list[FundQFS], int]:
-        """Get the latest QFS scores for all funds in a category (paginated)."""
-        if not mstar_ids:
-            return [], 0
-
-        latest_date_subq = (
-            select(
-                FundQFS.mstar_id,
-                func.max(FundQFS.computed_date).label("max_date"),
-            )
-            .where(FundQFS.mstar_id.in_(mstar_ids))
-            .group_by(FundQFS.mstar_id)
-            .subquery()
+        return await self.qfs.get_latest_qfs_by_category(
+            category_name=category_name,
+            mstar_ids=mstar_ids,
+            sort_by=sort_by,
+            sort_desc=sort_desc,
+            page=page,
+            limit=limit,
         )
-
-        base_query = (
-            select(FundQFS)
-            .join(
-                latest_date_subq,
-                (FundQFS.mstar_id == latest_date_subq.c.mstar_id)
-                & (FundQFS.computed_date == latest_date_subq.c.max_date),
-            )
-        )
-
-        count_query = (
-            select(func.count())
-            .select_from(FundQFS)
-            .join(
-                latest_date_subq,
-                (FundQFS.mstar_id == latest_date_subq.c.mstar_id)
-                & (FundQFS.computed_date == latest_date_subq.c.max_date),
-            )
-        )
-        count_result = await self.session.execute(count_query)
-        total = count_result.scalar_one()
-
-        sort_column = getattr(FundQFS, sort_by, FundQFS.qfs)
-        if sort_desc:
-            base_query = base_query.order_by(sort_column.desc())
-        else:
-            base_query = base_query.order_by(sort_column.asc())
-
-        offset = (page - 1) * limit
-        base_query = base_query.offset(offset).limit(limit)
-
-        result = await self.session.execute(base_query)
-        rows = list(result.scalars().all())
-
-        return rows, total
 
     async def get_qfs_history(
         self, mstar_id: str, limit: int = 12
     ) -> list[FundQFS]:
-        """Get historical QFS records for a fund, most recent first."""
-        result = await self.session.execute(
-            select(FundQFS)
-            .where(FundQFS.mstar_id == mstar_id)
-            .order_by(FundQFS.computed_date.desc())
-            .limit(limit)
-        )
-        return list(result.scalars().all())
+        return await self.qfs.get_qfs_history(mstar_id, limit=limit)
 
     # ===================================================================
-    # FSAS methods
+    # FSAS delegates
     # ===================================================================
 
     async def upsert_fsas(self, record: dict) -> FundFSAS:
-        """Insert an FSAS record, or update if (mstar_id, fm_signal_date) exists."""
-        stmt = pg_insert(FundFSAS).values(**record)
-        update_keys = [
-            k for k in record if k not in ("mstar_id", "fm_signal_date")
-        ]
-        stmt = stmt.on_conflict_do_update(
-            constraint="uq_fsas_mstar_signal",
-            set_={key: stmt.excluded[key] for key in update_keys},
-        )
-        stmt = stmt.returning(FundFSAS)
-        result = await self.session.execute(stmt)
-        await self.session.flush()
-        return result.scalar_one()
+        return await self.fsas.upsert_fsas(record)
 
     async def bulk_upsert_fsas(self, records: list[dict]) -> int:
-        """Bulk upsert FSAS records. Returns the number of rows affected."""
-        if not records:
-            return 0
-
-        update_keys = [
-            k for k in records[0] if k not in ("mstar_id", "fm_signal_date")
-        ]
-        stmt = pg_insert(FundFSAS).values(records)
-        stmt = stmt.on_conflict_do_update(
-            constraint="uq_fsas_mstar_signal",
-            set_={key: stmt.excluded[key] for key in update_keys},
-        )
-        result = await self.session.execute(stmt)
-        await self.session.flush()
-        return result.rowcount
+        return await self.fsas.bulk_upsert_fsas(records)
 
     async def get_latest_fsas(self, mstar_id: str) -> Optional[FundFSAS]:
-        """Get the most recent FSAS record for a specific fund."""
-        result = await self.session.execute(
-            select(FundFSAS)
-            .where(FundFSAS.mstar_id == mstar_id)
-            .order_by(FundFSAS.fm_signal_date.desc())
-            .limit(1)
-        )
-        return result.scalar_one_or_none()
+        return await self.fsas.get_latest_fsas(mstar_id)
 
     async def get_latest_fsas_by_mstar_ids(
         self, mstar_ids: list[str]
     ) -> list[FundFSAS]:
-        """Get the latest FSAS record for each fund in the provided list."""
-        if not mstar_ids:
-            return []
-
-        latest_date_subq = (
-            select(
-                FundFSAS.mstar_id,
-                func.max(FundFSAS.fm_signal_date).label("max_date"),
-            )
-            .where(FundFSAS.mstar_id.in_(mstar_ids))
-            .group_by(FundFSAS.mstar_id)
-            .subquery()
-        )
-
-        result = await self.session.execute(
-            select(FundFSAS).join(
-                latest_date_subq,
-                (FundFSAS.mstar_id == latest_date_subq.c.mstar_id)
-                & (FundFSAS.fm_signal_date == latest_date_subq.c.max_date),
-            )
-        )
-        return list(result.scalars().all())
+        return await self.fsas.get_latest_fsas_by_mstar_ids(mstar_ids)
 
     # ===================================================================
-    # Shortlist methods
+    # Shortlist delegates
     # ===================================================================
 
     async def bulk_upsert_shortlist(self, records: list[dict]) -> int:
-        """Bulk upsert shortlist records. Returns the number of rows affected."""
-        if not records:
-            return 0
-
-        update_keys = [
-            k for k in records[0] if k not in ("mstar_id", "computed_date")
-        ]
-        stmt = pg_insert(FundShortlist).values(records)
-        stmt = stmt.on_conflict_do_update(
-            constraint="uq_shortlist_mstar_date",
-            set_={key: stmt.excluded[key] for key in update_keys},
-        )
-        result = await self.session.execute(stmt)
-        await self.session.flush()
-        return result.rowcount
+        return await self.shortlist.bulk_upsert_shortlist(records)
 
     async def get_latest_shortlist(self) -> list[FundShortlist]:
-        """Get the latest shortlist (most recent computed_date across all categories)."""
-        # Find the most recent computed_date
-        max_date_result = await self.session.execute(
-            select(func.max(FundShortlist.computed_date))
-        )
-        max_date = max_date_result.scalar_one_or_none()
-        if max_date is None:
-            return []
-
-        result = await self.session.execute(
-            select(FundShortlist)
-            .where(FundShortlist.computed_date == max_date)
-            .order_by(FundShortlist.category_name, FundShortlist.qfs_rank)
-        )
-        return list(result.scalars().all())
+        return await self.shortlist.get_latest_shortlist()
 
     async def get_shortlisted_mstar_ids(self) -> list[str]:
-        """Get the mstar_ids of the latest shortlisted funds."""
-        max_date_result = await self.session.execute(
-            select(func.max(FundShortlist.computed_date))
-        )
-        max_date = max_date_result.scalar_one_or_none()
-        if max_date is None:
-            return []
-
-        result = await self.session.execute(
-            select(FundShortlist.mstar_id)
-            .where(FundShortlist.computed_date == max_date)
-        )
-        return list(result.scalars().all())
+        return await self.shortlist.get_shortlisted_mstar_ids()
 
     async def clear_shortlist_for_date(self, computed_date: date) -> int:
-        """Delete all shortlist entries for a specific date (before rebuild)."""
-        from sqlalchemy import delete
-        result = await self.session.execute(
-            delete(FundShortlist).where(FundShortlist.computed_date == computed_date)
-        )
-        await self.session.flush()
-        return result.rowcount
+        return await self.shortlist.clear_shortlist_for_date(computed_date)
 
     # ===================================================================
-    # Recommendation methods (replaces CRS)
+    # Recommendation delegates
     # ===================================================================
 
     async def bulk_upsert_recommendations(self, records: list[dict]) -> int:
-        """Bulk upsert recommendation records. Returns the number of rows affected."""
-        if not records:
-            return 0
-
-        update_keys = [
-            k for k in records[0] if k not in ("mstar_id", "computed_date")
-        ]
-        stmt = pg_insert(FundRecommendation).values(records)
-        stmt = stmt.on_conflict_do_update(
-            constraint="uq_recommendation_mstar_date",
-            set_={key: stmt.excluded[key] for key in update_keys},
-        )
-        result = await self.session.execute(stmt)
-        await self.session.flush()
-        return result.rowcount
+        return await self.recommendation.bulk_upsert_recommendations(records)
 
     async def get_latest_recommendation(
         self, mstar_id: str
     ) -> Optional[FundRecommendation]:
-        """Get the most recent recommendation for a specific fund."""
-        result = await self.session.execute(
-            select(FundRecommendation)
-            .where(FundRecommendation.mstar_id == mstar_id)
-            .order_by(FundRecommendation.computed_date.desc())
-            .limit(1)
-        )
-        return result.scalar_one_or_none()
+        return await self.recommendation.get_latest_recommendation(mstar_id)
 
     async def get_latest_recommendations_by_mstar_ids(
         self, mstar_ids: list[str]
     ) -> list[FundRecommendation]:
-        """Get the latest recommendation for each fund in the list."""
-        if not mstar_ids:
-            return []
-
-        latest_date_subq = (
-            select(
-                FundRecommendation.mstar_id,
-                func.max(FundRecommendation.computed_date).label("max_date"),
-            )
-            .where(FundRecommendation.mstar_id.in_(mstar_ids))
-            .group_by(FundRecommendation.mstar_id)
-            .subquery()
+        return await self.recommendation.get_latest_recommendations_by_mstar_ids(
+            mstar_ids
         )
-
-        result = await self.session.execute(
-            select(FundRecommendation).join(
-                latest_date_subq,
-                (FundRecommendation.mstar_id == latest_date_subq.c.mstar_id)
-                & (FundRecommendation.computed_date == latest_date_subq.c.max_date),
-            )
-        )
-        return list(result.scalars().all())
 
     async def get_latest_shortlisted_recommendations(
         self,
     ) -> list[FundRecommendation]:
-        """Get recommendations for all currently shortlisted funds."""
-        latest_date_subq = (
-            select(
-                FundRecommendation.mstar_id,
-                func.max(FundRecommendation.computed_date).label("max_date"),
-            )
-            .where(FundRecommendation.is_shortlisted.is_(True))
-            .group_by(FundRecommendation.mstar_id)
-            .subquery()
-        )
-
-        result = await self.session.execute(
-            select(FundRecommendation)
-            .join(
-                latest_date_subq,
-                (FundRecommendation.mstar_id == latest_date_subq.c.mstar_id)
-                & (FundRecommendation.computed_date == latest_date_subq.c.max_date),
-            )
-            .order_by(FundRecommendation.tier, FundRecommendation.qfs.desc())
-        )
-        return list(result.scalars().all())
+        return await self.recommendation.get_latest_shortlisted_recommendations()
 
     # ===================================================================
-    # Audit log
+    # Audit log delegate
     # ===================================================================
 
     async def create_audit_log(self, audit_data: dict) -> ScoreAuditLog:
-        """Create a score audit log entry for traceability."""
-        log_entry = ScoreAuditLog(**audit_data)
-        self.session.add(log_entry)
-        await self.session.flush()
-        return log_entry
+        return await self.audit.create_audit_log(audit_data)

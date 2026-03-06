@@ -58,26 +58,31 @@ def min_max_normalise(
 
 def compute_data_completeness(
     metric_values: dict[str, dict[str, Optional[float]]],
+    total_possible: int = 0,
 ) -> float:
     """
     Calculate the percentage of available data points across all metrics and horizons.
 
-    The QFS engine uses 13 metrics x 4 horizons = 52 possible data points.
-    This function counts how many are non-None and returns a percentage.
-
     Args:
         metric_values: Nested dict of {metric_name: {horizon: value_or_None}}.
+        total_possible: The actual number of scorable data points from METRIC_CONFIG.
+                        If 0, falls back to counting all keys in metric_values.
 
     Returns:
         Percentage (0.0 - 100.0) of non-None data points.
     """
-    total_possible = 13 * 4  # 52 data points
     non_none_count = 0
 
     for _metric_name, horizons in metric_values.items():
         for _horizon, value in horizons.items():
             if value is not None:
                 non_none_count += 1
+
+    # Derive denominator dynamically if not provided
+    if total_possible <= 0:
+        total_possible = sum(
+            len(horizons) for horizons in metric_values.values()
+        )
 
     if total_possible == 0:
         return 0.0

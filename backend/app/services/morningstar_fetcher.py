@@ -22,8 +22,6 @@ from app.services.morningstar_parser import parse_xml_response
 
 logger = structlog.get_logger(__name__)
 
-API_BASE = "https://api.morningstar.com/v2/service/mf"
-
 # Short code -> full API path name
 API_PATHS: dict[str, str] = {
     "DP": "DailyPerformance",
@@ -39,6 +37,8 @@ API_PATHS: dict[str, str] = {
 REQUEST_TIMEOUT = 30.0
 MAX_RETRIES = 3
 RETRY_BACKOFF_BASE = 2.0  # seconds — exponential backoff
+# HTTP status codes that are permanent — retrying won't help
+NON_RETRIABLE_STATUS_CODES = {400, 401, 403, 404, 405, 422}
 
 
 class MorningstarFetchError(Exception):
@@ -57,6 +57,7 @@ class MorningstarFetcher:
     def __init__(self) -> None:
         settings = get_settings()
         self._access_code = settings.morningstar_access_code
+        self._api_base = settings.morningstar_api_url
         self._client: httpx.AsyncClient | None = None
 
     async def __aenter__(self) -> "MorningstarFetcher":
@@ -99,7 +100,7 @@ class MorningstarFetcher:
         """
         # Resolve short code to full path
         api_path = API_PATHS.get(api_name, api_name)
-        url = f"{API_BASE}/{api_path}/{id_type}/{identifier}"
+        url = f"{self._api_base}/{api_path}/{id_type}/{identifier}"
         client = self._get_client()
 
         last_error: Exception | None = None
@@ -118,7 +119,14 @@ class MorningstarFetcher:
                     )
                     return parsed
 
-                # Non-200 but not a transient error — log and retry anyway
+                # Non-retriable status codes — fail immediately, don't waste retries
+                if resp.status_code in NON_RETRIABLE_STATUS_CODES:
+                    raise MorningstarFetchError(
+                        f"HTTP {resp.status_code} for {api_name}/{identifier} "
+                        "(non-retriable)"
+                    )
+
+                # Transient error (5xx, rate limit, etc.) — log and retry
                 logger.warning(
                     "morningstar_fetch_http_error",
                     api=api_name,
@@ -194,9 +202,11 @@ class MorningstarFetcher:
         If any individual API fails, its entry will contain an empty dict
         and the error is logged (does not stop the others).
         """
+        # TTR (TrailingTotalReturn) is intentionally excluded — DP already
+        # provides all trailing return data used by the scoring engine.
+        # Fetching TTR was a wasted API call.
         api_methods = {
             "DP": self.fetch_daily_performance,
-            "TTR": self.fetch_trailing_returns,
             "RM": self.fetch_risk_measures,
             "RMP": self.fetch_relative_risk_measures,
             "TTRR": self.fetch_return_ranks,

@@ -76,7 +76,7 @@ class ScoreDetail(BaseModel):
     score_5y: Optional[float] = Field(None, description="Average normalised score for 5-year horizon")
     score_10y: Optional[float] = Field(None, description="Average normalised score for 10-year horizon")
     data_completeness_pct: Optional[float] = Field(
-        None, description="Percentage of 52 possible data points available"
+        None, description="Percentage of scorable data points available (dynamic from METRIC_CONFIG)"
     )
     available_horizons: int = Field(4, description="Number of horizons with data")
     metric_scores: Optional[dict[str, Any]] = Field(
@@ -193,6 +193,8 @@ class FundScoreDetail(BaseModel):
     Used on the fund deep-dive page to show all scoring layers.
     """
     mstar_id: str
+    fund_name: Optional[str] = Field(None, description="Fund name from master data")
+    category_name: Optional[str] = Field(None, description="SEBI category name")
     qfs: Optional[ScoreDetail] = None
     fsas: Optional[FSASDetail] = None
     recommendation: Optional[RecommendationDetail] = None

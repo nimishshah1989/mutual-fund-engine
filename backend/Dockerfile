@@ -28,8 +28,14 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir --upgrade pip && \
     pip install --no-cache-dir -r requirements.txt
 
+# Create non-root user for security
+RUN addgroup --system appgroup && adduser --system --ingroup appgroup appuser
+
 # -- Application code --
-COPY . .
+COPY --chown=appuser:appgroup . .
+
+# Switch to non-root user
+USER appuser
 
 # Default port — Railway overrides this via $PORT env var
 ENV PORT=8000

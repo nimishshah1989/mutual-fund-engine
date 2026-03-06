@@ -12,10 +12,13 @@ from typing import Optional
 from uuid import UUID
 
 import structlog
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.auth import require_api_key
 from app.core.database import get_db
+from app.core.rate_limit import RATE_MUTATION, RATE_READ, limiter
+from app.core.exceptions import AppException, NotFoundError
 from app.models.db.sector_signals import SIGNAL_WEIGHTS
 from app.models.schemas.common import ApiResponse, PaginatedResponse
 from app.models.schemas.signals import (
@@ -56,28 +59,21 @@ MORNINGSTAR_SECTORS = [
     response_model=ApiResponse[SignalListResponse],
     summary="List active sector signals",
 )
+@limiter.limit(RATE_READ)
 async def list_signals(
+    request: Request,
     db: AsyncSession = Depends(get_db),
 ) -> ApiResponse[SignalListResponse]:
     """Return all currently active FM sector signals, ordered by sector name."""
     try:
         repo = SectorSignalRepository(db)
         signals = await repo.get_active_signals()
-
         return ApiResponse.ok(
-            data=SignalListResponse(
-                signals=[
-                    SignalResponse.model_validate(sig) for sig in signals
-                ],
-            ),
+            data=SignalListResponse(signals=[SignalResponse.model_validate(sig) for sig in signals]),
         )
-
     except Exception as exc:
         logger.error("signals_list_failed", error=str(exc))
-        return ApiResponse.fail(
-            code="SIGNAL_LIST_ERROR",
-            message=f"Failed to list signals: {exc}",
-        )
+        raise AppException(message="Failed to list sector signals", error_code="SIGNAL_LIST_ERROR")
 
 
 @router.get(
@@ -85,7 +81,9 @@ async def list_signals(
     response_model=ApiResponse[SectorListResponse],
     summary="List all 11 GICS sectors with current signal",
 )
+@limiter.limit(RATE_READ)
 async def list_sectors(
+    request: Request,
     db: AsyncSession = Depends(get_db),
 ) -> ApiResponse[SectorListResponse]:
     """
@@ -122,10 +120,7 @@ async def list_sectors(
 
     except Exception as exc:
         logger.error("sectors_list_failed", error=str(exc))
-        return ApiResponse.fail(
-            code="SECTORS_LIST_ERROR",
-            message=f"Failed to list sectors: {exc}",
-        )
+        raise AppException(message="Failed to list sectors", error_code="SECTORS_LIST_ERROR")
 
 
 @router.put(
@@ -133,8 +128,11 @@ async def list_sectors(
     response_model=ApiResponse[BulkSignalUpdateResponse],
     summary="Bulk update sector signals",
 )
+@limiter.limit(RATE_MUTATION)
 async def bulk_update_signals(
+    request: Request,
     body: BulkSignalUpdateRequest,
+    _api_key: str = Depends(require_api_key),
     db: AsyncSession = Depends(get_db),
 ) -> ApiResponse[BulkSignalUpdateResponse]:
     """
@@ -147,47 +145,30 @@ async def bulk_update_signals(
     """
     try:
         repo = SectorSignalRepository(db)
-
-        updates = []
-        for entry in body.signals:
-            updates.append({
-                "sector_name": entry.sector_name,
-                "signal": entry.signal.value,
-                "confidence": entry.confidence.value,
-                "notes": entry.notes,
-                "updated_by": body.updated_by,
-                "effective_date": body.effective_date,
+        updates = [
+            {
+                "sector_name": entry.sector_name, "signal": entry.signal.value,
+                "confidence": entry.confidence.value, "notes": entry.notes,
+                "updated_by": body.updated_by, "effective_date": body.effective_date,
                 "change_reason": body.change_reason,
-            })
+            }
+            for entry in body.signals
+        ]
 
         created_signals = await repo.bulk_update_signals(updates)
-
         updated_count = len(created_signals)
         unchanged_count = len(body.signals) - updated_count
 
-        logger.info(
-            "signals_bulk_updated",
-            updated=updated_count,
-            unchanged=unchanged_count,
-            updated_by=body.updated_by,
-        )
-
+        logger.info("signals_bulk_updated", updated=updated_count, unchanged=unchanged_count, updated_by=body.updated_by)
         return ApiResponse.ok(
             data=BulkSignalUpdateResponse(
-                updated_count=updated_count,
-                unchanged_count=unchanged_count,
-                changes=[
-                    SignalResponse.model_validate(sig) for sig in created_signals
-                ],
+                updated_count=updated_count, unchanged_count=unchanged_count,
+                changes=[SignalResponse.model_validate(sig) for sig in created_signals],
             ),
         )
-
     except Exception as exc:
         logger.error("signals_bulk_update_failed", error=str(exc))
-        return ApiResponse.fail(
-            code="SIGNAL_BULK_UPDATE_ERROR",
-            message=f"Failed to bulk update signals: {exc}",
-        )
+        raise AppException(message="Failed to bulk update signals", error_code="SIGNAL_BULK_UPDATE_ERROR")
 
 
 @router.get(
@@ -195,7 +176,9 @@ async def bulk_update_signals(
     response_model=PaginatedResponse[SignalChangeLogEntry],
     summary="Signal change audit history",
 )
+@limiter.limit(RATE_READ)
 async def signal_change_history(
+    request: Request,
     sector_name: Optional[str] = Query(
         default=None, description="Filter by sector name"
     ),
@@ -207,25 +190,13 @@ async def signal_change_history(
     try:
         repo = SectorSignalRepository(db)
         rows, total = await repo.get_signal_change_history(
-            sector_name=sector_name,
-            page=page,
-            limit=limit,
+            sector_name=sector_name, page=page, limit=limit,
         )
-
         items = [SignalChangeLogEntry.model_validate(row) for row in rows]
-
-        return PaginatedResponse.create(
-            items=items, page=page, limit=limit, total=total
-        )
-
+        return PaginatedResponse.create(items=items, page=page, limit=limit, total=total)
     except Exception as exc:
         logger.error("signal_history_failed", error=str(exc))
-        return PaginatedResponse(
-            success=False,
-            data=[],
-            meta={"page": page, "limit": limit, "total": 0, "total_pages": 0},
-            error={"code": "SIGNAL_HISTORY_ERROR", "message": str(exc)},
-        )
+        raise AppException(message="Failed to retrieve signal change history", error_code="SIGNAL_HISTORY_ERROR")
 
 
 @router.post(
@@ -234,8 +205,11 @@ async def signal_change_history(
     status_code=201,
     summary="Create a sector signal",
 )
+@limiter.limit(RATE_MUTATION)
 async def create_signal(
+    request: Request,
     body: SignalCreate,
+    _api_key: str = Depends(require_api_key),
     db: AsyncSession = Depends(get_db),
 ) -> ApiResponse[SignalResponse]:
     """
@@ -243,40 +217,19 @@ async def create_signal(
     previous active signal for the same sector.
     """
     try:
-        signal_weight = SIGNAL_WEIGHTS.get(body.signal.value, 0.0)
-
         repo = SectorSignalRepository(db)
         new_signal = await repo.create_signal({
-            "sector_name": body.sector_name,
-            "signal": body.signal.value,
+            "sector_name": body.sector_name, "signal": body.signal.value,
             "confidence": body.confidence.value,
-            "signal_weight": signal_weight,
-            "effective_date": body.effective_date,
-            "updated_by": body.updated_by,
+            "signal_weight": SIGNAL_WEIGHTS.get(body.signal.value, 0.0),
+            "effective_date": body.effective_date, "updated_by": body.updated_by,
             "notes": body.notes,
         })
-
-        logger.info(
-            "signal_created",
-            sector=body.sector_name,
-            signal=body.signal.value,
-            updated_by=body.updated_by,
-        )
-
-        return ApiResponse.ok(
-            data=SignalResponse.model_validate(new_signal),
-        )
-
+        logger.info("signal_created", sector=body.sector_name, signal=body.signal.value, updated_by=body.updated_by)
+        return ApiResponse.ok(data=SignalResponse.model_validate(new_signal))
     except Exception as exc:
-        logger.error(
-            "signal_create_failed",
-            sector=body.sector_name,
-            error=str(exc),
-        )
-        return ApiResponse.fail(
-            code="SIGNAL_CREATE_ERROR",
-            message=f"Failed to create signal: {exc}",
-        )
+        logger.error("signal_create_failed", sector=body.sector_name, error=str(exc))
+        raise AppException(message="Failed to create sector signal", error_code="SIGNAL_CREATE_ERROR")
 
 
 @router.delete(
@@ -284,34 +237,26 @@ async def create_signal(
     response_model=ApiResponse[dict],
     summary="Deactivate a sector signal",
 )
+@limiter.limit(RATE_MUTATION)
 async def deactivate_signal(
+    request: Request,
     signal_id: UUID,
+    _api_key: str = Depends(require_api_key),
     db: AsyncSession = Depends(get_db),
 ) -> ApiResponse[dict]:
     """Soft-delete a signal by setting is_active=False."""
     try:
         repo = SectorSignalRepository(db)
         deactivated = await repo.deactivate_signal(signal_id)
-
         if not deactivated:
-            return ApiResponse.fail(
-                code="SIGNAL_NOT_FOUND",
+            raise NotFoundError(
                 message=f"Signal {signal_id} not found or already inactive",
+                error_code="SIGNAL_NOT_FOUND",
             )
-
         logger.info("signal_deactivated", signal_id=str(signal_id))
-
-        return ApiResponse.ok(
-            data={"signal_id": str(signal_id), "is_active": False},
-        )
-
+        return ApiResponse.ok(data={"signal_id": str(signal_id), "is_active": False})
+    except AppException:
+        raise
     except Exception as exc:
-        logger.error(
-            "signal_deactivate_failed",
-            signal_id=str(signal_id),
-            error=str(exc),
-        )
-        return ApiResponse.fail(
-            code="SIGNAL_DEACTIVATE_ERROR",
-            message=f"Failed to deactivate signal: {exc}",
-        )
+        logger.error("signal_deactivate_failed", signal_id=str(signal_id), error=str(exc))
+        raise AppException(message="Failed to deactivate signal", error_code="SIGNAL_DEACTIVATE_ERROR")

@@ -19,6 +19,8 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from slowapi import _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
 
 from app.api.health import router as health_router
 from app.api.v1.router import v1_router
@@ -27,6 +29,7 @@ from app.core.database import close_db, init_db
 from app.core.dependencies import get_settings
 from app.core.exceptions import AppException
 from app.core.logging import configure_logging, get_logger
+from app.core.rate_limit import limiter
 from app.jobs.scheduler import start_scheduler, stop_scheduler
 
 logger = get_logger(__name__)
@@ -84,19 +87,23 @@ def create_app() -> FastAPI:
             "Quantitative fund scoring, FM sector alignment, and composite "
             "recommendation engine for mutual fund advisory."
         ),
-        version="1.0.0",
+        version=settings.app_version,
         lifespan=lifespan,
         docs_url="/docs" if not settings.is_production else None,
         redoc_url="/redoc" if not settings.is_production else None,
     )
+
+    # --- Rate Limiting ---
+    application.state.limiter = limiter
+    application.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
     # --- CORS Middleware ---
     application.add_middleware(
         CORSMiddleware,
         allow_origins=settings.cors_origin_list,
         allow_credentials=True,
-        allow_methods=["*"],
-        allow_headers=["*"],
+        allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+        allow_headers=["Content-Type", "Authorization", "X-API-Key"],
     )
 
     # --- Global Exception Handler ---

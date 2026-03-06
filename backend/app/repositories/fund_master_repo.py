@@ -1,7 +1,7 @@
 """Repository for fund_master table."""
 
 from __future__ import annotations
-from datetime import datetime
+from datetime import datetime, timezone
 
 from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
@@ -55,7 +55,7 @@ class FundMasterRepository(BaseRepository[FundMaster]):
                 key: stmt.excluded[key]
                 for key in data
                 if key != "mstar_id"
-            } | {"updated_at": datetime.now()},
+            } | {"updated_at": datetime.now(timezone.utc)},
         )
         stmt = stmt.returning(FundMaster)
         result = await self.session.execute(stmt)
@@ -71,7 +71,7 @@ class FundMasterRepository(BaseRepository[FundMaster]):
         stmt = stmt.on_conflict_do_update(
             index_elements=["mstar_id"],
             set_={key: stmt.excluded[key] for key in update_keys}
-            | {"updated_at": datetime.now()},
+            | {"updated_at": datetime.now(timezone.utc)},
         )
         result = await self.session.execute(stmt)
         await self.session.flush()

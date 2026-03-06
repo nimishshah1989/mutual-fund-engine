@@ -13,7 +13,9 @@ dict. Type conversion is left to the caller via safe_float/safe_int/safe_date.
 
 from __future__ import annotations
 from datetime import date, datetime
-from xml.etree import ElementTree
+from xml.etree.ElementTree import ParseError
+
+from defusedxml.ElementTree import fromstring as safe_fromstring
 
 import structlog
 
@@ -35,14 +37,16 @@ def parse_xml_response(xml_text: str) -> dict[str, str]:
 
     Returns all leaf-level elements as {tag: text}. Tags with no text are skipped.
     If multiple <api> elements exist, data from all are merged (last value wins).
+
+    Uses defusedxml to prevent XXE (XML External Entity) attacks.
     """
     if not xml_text or not xml_text.strip():
         logger.warning("morningstar_parser_empty_response")
         return {}
 
     try:
-        root = ElementTree.fromstring(xml_text)
-    except ElementTree.ParseError as exc:
+        root = safe_fromstring(xml_text)
+    except ParseError as exc:
         logger.error("morningstar_parser_xml_error", error=str(exc))
         return {}
 

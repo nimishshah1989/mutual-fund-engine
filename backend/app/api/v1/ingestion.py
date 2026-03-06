@@ -9,10 +9,13 @@ from __future__ import annotations
 from uuid import UUID
 
 import structlog
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.auth import require_api_key
 from app.core.database import get_db
+from app.core.rate_limit import RATE_MUTATION, RATE_READ, limiter
+from app.core.exceptions import AppException, DataIngestionError, NotFoundError
 from app.models.schemas.common import ApiResponse
 from app.models.schemas.ingestion import (
     IngestionLogResponse,
@@ -30,11 +33,14 @@ router = APIRouter()
 @router.post(
     "/morningstar",
     response_model=ApiResponse[IngestionResponse],
-    status_code=200,
+    status_code=201,
     summary="Trigger Morningstar data ingestion",
 )
+@limiter.limit(RATE_MUTATION)
 async def ingest_morningstar(
+    request: Request,
     body: IngestionRequest,
+    _api_key: str = Depends(require_api_key),
     db: AsyncSession = Depends(get_db),
 ) -> ApiResponse[IngestionResponse]:
     """
@@ -64,9 +70,9 @@ async def ingest_morningstar(
 
     except Exception as exc:
         logger.error("ingestion_endpoint_failed", error=str(exc))
-        return ApiResponse.fail(
-            code="INGESTION_ERROR",
-            message=f"Ingestion failed: {exc}",
+        raise DataIngestionError(
+            message="Ingestion failed",
+            error_code="INGESTION_ERROR",
         )
 
 
@@ -75,7 +81,9 @@ async def ingest_morningstar(
     response_model=ApiResponse[list[IngestionLogResponse]],
     summary="List recent ingestion logs",
 )
+@limiter.limit(RATE_READ)
 async def list_ingestion_logs(
+    request: Request,
     limit: int = Query(default=20, ge=1, le=100, description="Max logs to return"),
     db: AsyncSession = Depends(get_db),
 ) -> ApiResponse[list[IngestionLogResponse]]:
@@ -105,9 +113,9 @@ async def list_ingestion_logs(
 
     except Exception as exc:
         logger.error("ingestion_logs_list_failed", error=str(exc))
-        return ApiResponse.fail(
-            code="INGESTION_LOG_ERROR",
-            message=f"Failed to retrieve ingestion logs: {exc}",
+        raise AppException(
+            message="Failed to retrieve ingestion logs",
+            error_code="INGESTION_LOG_ERROR",
         )
 
 
@@ -116,7 +124,9 @@ async def list_ingestion_logs(
     response_model=ApiResponse[IngestionLogResponse],
     summary="Get a single ingestion log",
 )
+@limiter.limit(RATE_READ)
 async def get_ingestion_log(
+    request: Request,
     log_id: UUID,
     db: AsyncSession = Depends(get_db),
 ) -> ApiResponse[IngestionLogResponse]:
@@ -126,9 +136,9 @@ async def get_ingestion_log(
         log = await repo.get_by_id(log_id)
 
         if log is None:
-            return ApiResponse.fail(
-                code="LOG_NOT_FOUND",
+            raise NotFoundError(
                 message=f"Ingestion log {log_id} not found",
+                error_code="LOG_NOT_FOUND",
             )
 
         return ApiResponse.ok(
@@ -147,9 +157,12 @@ async def get_ingestion_log(
             ),
         )
 
+    except AppException:
+        # Re-raise AppException subclasses (e.g. NotFoundError above)
+        raise
     except Exception as exc:
         logger.error("ingestion_log_get_failed", log_id=str(log_id), error=str(exc))
-        return ApiResponse.fail(
-            code="INGESTION_LOG_ERROR",
-            message=f"Failed to retrieve ingestion log: {exc}",
+        raise AppException(
+            message="Failed to retrieve ingestion log",
+            error_code="INGESTION_LOG_ERROR",
         )

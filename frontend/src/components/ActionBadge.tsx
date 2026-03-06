@@ -5,8 +5,9 @@ interface ActionBadgeProps {
 const ACTION_STYLES: Record<string, string> = {
   BUY: "bg-emerald-600 text-white",
   SIP: "bg-emerald-100 text-emerald-700",
+  HOLD_PLUS: "bg-blue-100 text-blue-700",
   HOLD: "bg-amber-100 text-amber-700",
-  SWITCH: "bg-red-100 text-red-700",
+  REDUCE: "bg-orange-100 text-orange-700",
   EXIT: "bg-red-600 text-white",
 };
 

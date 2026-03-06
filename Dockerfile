@@ -64,6 +64,11 @@ COPY --from=frontend-builder /app/frontend/public ./frontend/public
 COPY start.sh ./start.sh
 RUN chmod +x ./start.sh
 
+# Create non-root user for security
+RUN addgroup --system appgroup && adduser --system --ingroup appgroup appuser
+RUN chown -R appuser:appgroup /app
+USER appuser
+
 # Only port 3000 is exposed (FastAPI is internal on 127.0.0.1:8000)
 EXPOSE 3000
 

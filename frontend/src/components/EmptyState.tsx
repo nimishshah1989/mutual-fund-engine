@@ -35,6 +35,7 @@ export default function EmptyState({
       {actionLabel && onAction && (
         <button
           onClick={onAction}
+          aria-label={actionLabel}
           className="mt-4 bg-teal-600 text-white font-medium px-4 py-2 rounded-lg hover:bg-teal-700 transition-colors text-sm"
         >
           {actionLabel}

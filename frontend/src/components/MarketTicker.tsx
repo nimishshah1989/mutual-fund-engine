@@ -1,11 +1,14 @@
 /**
  * Static market ticker strip shown at the top of every page.
- * In a production app this would fetch live data from an index API;
- * for now we display representative placeholder values.
+ * TODO: Connect to live index API (yfinance via backend proxy or Kite Connect)
+ * to replace placeholder values with real-time market data.
  */
 export default function MarketTicker() {
   return (
     <div className="flex items-center gap-6 text-xs">
+      <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold uppercase text-amber-700">
+        Demo
+      </span>
       <div>
         <span className="text-slate-400">NIFTY 50</span>
         <span className="ml-1 font-mono font-semibold text-emerald-600">
@@ -35,8 +38,8 @@ export default function MarketTicker() {
         <span className="ml-1 text-red-500">{"\u2212"}3bps</span>
       </div>
       <div className="flex items-center gap-1">
-        <span className="w-2 h-2 rounded-full bg-emerald-500" />
-        <span className="text-slate-500">Market Open</span>
+        <span className="w-2 h-2 rounded-full bg-slate-300" />
+        <span className="text-slate-400">Offline</span>
       </div>
     </div>
   );

@@ -11,8 +11,11 @@ from __future__ import annotations
 from typing import Any
 
 import structlog
-from fastapi import APIRouter, BackgroundTasks
+from fastapi import APIRouter, BackgroundTasks, Depends, Request
 
+from app.core.auth import require_api_key
+from app.core.exceptions import AppException
+from app.core.rate_limit import RATE_COMPUTE, limiter
 from app.jobs.fm_signal_trigger import run_fm_signal_recompute
 from app.models.schemas.common import ApiResponse
 
@@ -27,8 +30,11 @@ router = APIRouter()
     status_code=200,
     summary="Trigger FSAS + recommendation recompute after FM signal update",
 )
+@limiter.limit(RATE_COMPUTE)
 async def trigger_fm_signal_recompute(
-    background_tasks: BackgroundTasks,
+    request: Request,
+    _api_key: str = Depends(require_api_key),
+    background_tasks: BackgroundTasks = BackgroundTasks(),
 ) -> ApiResponse[dict[str, Any]]:
     """
     Trigger FSAS recompute for shortlisted funds and reassign recommendations.
@@ -53,9 +59,9 @@ async def trigger_fm_signal_recompute(
             "fm_signal_recompute_api_failed",
             error=str(exc),
         )
-        return ApiResponse.fail(
-            code="FM_RECOMPUTE_ERROR",
-            message=f"Failed to trigger FM signal recompute: {exc}",
+        raise AppException(
+            message="Failed to trigger FM signal recompute",
+            error_code="FM_RECOMPUTE_ERROR",
         )
 
 
@@ -65,8 +71,11 @@ async def trigger_fm_signal_recompute(
     status_code=202,
     summary="Trigger FSAS + recommendation recompute in background",
 )
+@limiter.limit(RATE_COMPUTE)
 async def trigger_fm_signal_recompute_async(
-    background_tasks: BackgroundTasks,
+    request: Request,
+    _api_key: str = Depends(require_api_key),
+    background_tasks: BackgroundTasks = BackgroundTasks(),
 ) -> ApiResponse[dict[str, str]]:
     """
     Trigger FSAS + recommendation recompute in the background.
@@ -90,7 +99,7 @@ async def trigger_fm_signal_recompute_async(
             "fm_signal_recompute_async_api_failed",
             error=str(exc),
         )
-        return ApiResponse.fail(
-            code="FM_RECOMPUTE_QUEUE_ERROR",
-            message=f"Failed to queue FM signal recompute: {exc}",
+        raise AppException(
+            message="Failed to queue FM signal recompute",
+            error_code="FM_RECOMPUTE_QUEUE_ERROR",
         )
