@@ -10,6 +10,7 @@ from fastapi import APIRouter
 from app.api.v1.benchmarks import router as benchmarks_router
 from app.api.v1.ingestion import router as ingestion_router
 from app.api.v1.jobs import router as jobs_router
+from app.api.v1.pulse import router as pulse_router
 from app.api.v1.scores import router as scores_router
 from app.api.v1.scores_read import router as scores_read_router
 from app.api.v1.signals import router as signals_router
@@ -35,4 +36,7 @@ v1_router.include_router(
 )
 v1_router.include_router(
     jobs_router, prefix="/jobs", tags=["Background Jobs"]
+)
+v1_router.include_router(
+    pulse_router, prefix="/pulse", tags=["MF Pulse"]
 )

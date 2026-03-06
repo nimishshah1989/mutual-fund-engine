@@ -28,3 +28,6 @@ from app.models.db.alert_events import AlertEvent  # noqa: F401
 from app.models.db.ingestion_log import IngestionLog  # noqa: F401
 from app.models.db.score_audit_log import ScoreAuditLog  # noqa: F401
 from app.models.db.benchmark_sector_weights import BenchmarkSectorWeight  # noqa: F401
+from app.models.db.nav_history import NavHistory  # noqa: F401
+from app.models.db.benchmark_history import BenchmarkHistory  # noqa: F401
+from app.models.db.mf_pulse_snapshot import MFPulseSnapshot  # noqa: F401

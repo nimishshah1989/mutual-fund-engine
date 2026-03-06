@@ -98,6 +98,7 @@ def _register_jobs(scheduler: AsyncIOScheduler) -> None:
     from app.jobs.daily_nav_refresh import run_daily_nav_refresh
     from app.jobs.weekly_master_refresh import run_weekly_master_refresh
     from app.jobs.monthly_risk_recompute import run_monthly_risk_recompute
+    from app.jobs.daily_pulse_refresh import run_daily_pulse_refresh
 
     # -- Daily NAV Refresh: 2:00 AM IST every day --
     scheduler.add_job(
@@ -123,5 +124,14 @@ def _register_jobs(scheduler: AsyncIOScheduler) -> None:
         trigger=CronTrigger(day=2, hour=3, minute=0, timezone=IST_TIMEZONE),
         id="monthly_risk_recompute",
         name="Monthly Full Pipeline Recompute",
+        replace_existing=True,
+    )
+
+    # -- Daily Pulse Refresh: 2:30 AM IST every day --
+    scheduler.add_job(
+        func=run_daily_pulse_refresh,
+        trigger=CronTrigger(hour=2, minute=30, timezone=IST_TIMEZONE),
+        id="daily_pulse_refresh",
+        name="Daily MF Pulse Refresh (NAV + Ratio Returns)",
         replace_existing=True,
     )

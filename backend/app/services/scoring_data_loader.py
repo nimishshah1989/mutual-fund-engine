@@ -218,6 +218,27 @@ class ScoringDataLoader:
         row = result.scalar_one_or_none()
         return row if row is not None else None
 
+    async def load_nifty_returns(self) -> Optional[dict[str, float]]:
+        """
+        Load Nifty 50 returns for QFS excess_return computation.
+        Delegates to PulseDataService.get_nifty_returns() which computes
+        annualized CAGR from benchmark_history table.
+        Returns None if benchmark data is not available yet.
+        """
+        try:
+            from app.services.pulse_data_service import PulseDataService
+            pulse_service = PulseDataService(self.session)
+            returns = await pulse_service.get_nifty_returns(horizons=["1y", "3y", "5y", "10y"])
+            # Check if at least one horizon has data
+            if all(v is None for v in returns.values()):
+                logger.warning("nifty_returns_all_none", message="No benchmark data available — excess_return will be null")
+                return None
+            logger.info("nifty_returns_loaded", returns=returns)
+            return returns
+        except Exception as exc:
+            logger.warning("nifty_returns_load_failed", error=str(exc))
+            return None
+
     async def load_all_eligible_fund_ids(self) -> dict[str, list[str]]:
         """Load all eligible fund IDs grouped by category. Used for full pipeline."""
         result = await self.session.execute(

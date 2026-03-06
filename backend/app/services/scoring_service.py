@@ -143,12 +143,14 @@ class ScoringService:
 
         risk_stats_by_fund = await self.data_loader.load_latest_risk_stats(fund_ids)
         performance_by_fund = await self.data_loader.load_latest_performance(fund_ids)
+        nifty_returns = await self.data_loader.load_nifty_returns()
 
         results = self.qfs_engine.compute(
             fund_ids=fund_ids,
             risk_stats_by_fund=risk_stats_by_fund,
             performance_by_fund=performance_by_fund,
             category_name=category_name,
+            nifty_returns=nifty_returns,
         )
 
         if not results:

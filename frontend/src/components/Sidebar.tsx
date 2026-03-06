@@ -13,6 +13,7 @@ interface NavItem {
 const NAV_ITEMS: NavItem[] = [
   { emoji: "\uD83D\uDCCA", label: "Dashboard", href: "/" },
   { emoji: "\uD83C\uDFC6", label: "Fund Universe", href: "/funds" },
+  { emoji: "\uD83D\uDCE1", label: "MF Pulse", href: "/pulse" },
   { emoji: "\uD83D\uDCC8", label: "FM Signals", href: "/signals" },
   { emoji: "\uD83D\uDCD6", label: "Methodology", href: "/methodology" },
   { emoji: "\u2699\uFE0F", label: "System", href: "/system" },

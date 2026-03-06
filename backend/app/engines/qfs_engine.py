@@ -46,6 +46,7 @@ class QFSEngine:
         risk_stats_by_fund: dict[str, dict[str, Any]],
         performance_by_fund: dict[str, dict[str, Any]],
         category_name: str,
+        nifty_returns: Optional[dict[str, float]] = None,
     ) -> list[dict[str, Any]]:
         """
         Compute QFS for all funds in a category. Takes pre-loaded data (no DB access)
@@ -65,6 +66,7 @@ class QFSEngine:
         cat_avg = self._compute_category_avg_returns(fund_ids, performance_by_fund)
         raw_by_metric = self._extract_all_raw_values(
             fund_ids, risk_stats_by_fund, performance_by_fund, cat_avg,
+            nifty_returns=nifty_returns,
         )
         norm_by_metric = self._normalise_all(raw_by_metric)
 
@@ -103,6 +105,7 @@ class QFSEngine:
         risk_stats: dict[str, dict[str, Any]],
         performance: dict[str, dict[str, Any]],
         cat_avg: dict[str, Optional[float]],
+        nifty_returns: Optional[dict[str, float]] = None,
     ) -> dict[str, dict[str, list[Optional[float]]]]:
         """Extract raw metric values for every fund x metric x horizon."""
         raw: dict[str, dict[str, list[Optional[float]]]] = {}
@@ -115,6 +118,7 @@ class QFSEngine:
                     vals.append(self._extract_metric_value(
                         metric_name, horizon, horizons.get(horizon),
                         mstar_id, risk_stats, performance, cat_avg,
+                        nifty_returns=nifty_returns,
                     ))
                 raw[metric_name][horizon] = vals
         return raw
@@ -240,6 +244,7 @@ class QFSEngine:
         self, metric_name: str, horizon: str, column_name: Optional[str],
         mstar_id: str, risk_stats: dict[str, dict[str, Any]],
         performance: dict[str, dict[str, Any]], cat_avg: dict[str, Optional[float]],
+        nifty_returns: Optional[dict[str, float]] = None,
     ) -> Optional[float]:
         """Extract a single metric value for one fund at one horizon."""
         config = METRIC_CONFIG[metric_name]
@@ -259,4 +264,11 @@ class QFSEngine:
             avg = cat_avg.get(horizon)
             if fund_ret is not None and avg is not None:
                 return float(fund_ret) - avg
+
+        if source == "computed" and metric_name == "excess_return":
+            fund_ret = performance.get(mstar_id, {}).get(f"return_{horizon}")
+            nifty_ret = nifty_returns.get(horizon) if nifty_returns else None
+            if fund_ret is not None and nifty_ret is not None:
+                return float(fund_ret) - float(nifty_ret)
+
         return None

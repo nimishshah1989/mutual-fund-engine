@@ -14,7 +14,7 @@ from __future__ import annotations
 
 from typing import Any, Optional
 
-ENGINE_VERSION = "1.1.0"
+ENGINE_VERSION = "2.0.0"
 
 # Horizons used for WFS/QFS scoring — 10Y excluded because very few
 # Indian MFs have a 10-year track record. 10Y data is still extracted and displayed.
@@ -92,10 +92,10 @@ METRIC_CONFIG: dict[str, dict[str, Any]] = {
         "source": "risk_stats",
         "priority": "good_to_have",
     },
-    "total_return": {
+    "excess_return": {
         "higher_is_better": True,
-        "horizons": {"1y": "return_1y", "3y": "return_3y", "5y": "return_5y", "10y": "return_10y"},
-        "source": "performance",
+        "horizons": {"1y": None, "3y": None, "5y": None, "10y": None},
+        "source": "computed",
         "priority": "must_have",
     },
     "category_alpha": {
