@@ -194,6 +194,7 @@ async def refresh_pulse(
 @limiter.limit(RATE_COMPUTE)
 async def backfill_pulse(
     request: Request,
+    background_tasks: BackgroundTasks,
     years: int = Query(default=3, ge=1, le=10, description="Years of history to fetch"),
     db: AsyncSession = Depends(get_db),
 ) -> ApiResponse[dict]:
@@ -202,8 +203,6 @@ async def backfill_pulse(
     Then compute snapshots. Takes ~5 minutes for 535 funds.
     Returns 202 Accepted immediately — work runs in background.
     """
-    from app.jobs.daily_pulse_refresh import run_pulse_backfill
-
     logger.info("pulse_backfill_triggered", years=years)
 
     async def _run_backfill() -> None:
@@ -214,7 +213,6 @@ async def backfill_pulse(
             await fetcher.backfill_all_fund_navs(years=years)
             await service.compute_all_snapshots()
 
-    background_tasks = BackgroundTasks()
     background_tasks.add_task(_run_backfill)
 
     return ApiResponse.ok(data={
