@@ -113,6 +113,14 @@ async def refresh_benchmark_weights(
             benchmark_name=benchmark_name,
         )
 
+        logger.info(
+            "benchmark_refresh_result",
+            status=result.get("status"),
+            sector_count=result.get("sector_count", 0),
+            reason=result.get("reason"),
+            benchmark_mstar_id=benchmark_mstar_id,
+        )
+
         return ApiResponse.ok(
             data=BenchmarkRefreshResponse(**result)
         )

@@ -88,11 +88,22 @@ class ScoringService:
             stale_config.get("value", 45) if stale_config else 45
         )
 
-        return await self._benchmark_service.ensure_fresh_weights(
+        weights = await self._benchmark_service.ensure_fresh_weights(
             benchmark_mstar_id=benchmark_mstar_id,
             benchmark_name=benchmark_name,
             max_age_days=max_age_days,
         )
+
+        if not weights:
+            logger.warning(
+                "ensure_benchmark_weights_empty",
+                benchmark_mstar_id=benchmark_mstar_id,
+                benchmark_name=benchmark_name,
+                max_age_days=max_age_days,
+                message="Benchmark weights returned empty — FMS will use raw exposure formula (no active weights)",
+            )
+
+        return weights
 
     async def refresh_benchmark(self) -> dict[str, Any]:
         """Force-refresh benchmark weights from Morningstar."""

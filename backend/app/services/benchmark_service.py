@@ -57,6 +57,7 @@ class BenchmarkService:
             "benchmark_refresh_start",
             mstar_id=benchmark_mstar_id,
             benchmark=benchmark_name,
+            api_endpoint=f"GlobalStockSectorBreakdown/mstarid/{benchmark_mstar_id}",
         )
 
         async with MorningstarFetcher() as fetcher:
@@ -66,6 +67,9 @@ class BenchmarkService:
             logger.error(
                 "benchmark_refresh_empty_response",
                 mstar_id=benchmark_mstar_id,
+                benchmark=benchmark_name,
+                api_endpoint=f"GlobalStockSectorBreakdown/mstarid/{benchmark_mstar_id}",
+                hint="Verify benchmark_mstar_id is correct and GSSB API is accessible for this ID",
             )
             return {
                 "status": "error",

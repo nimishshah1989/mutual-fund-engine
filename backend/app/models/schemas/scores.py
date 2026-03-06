@@ -288,6 +288,10 @@ class PipelineComputeResult(BaseModel):
     tier_distribution: Optional[dict[str, int]] = None
     shortlisted_count: Optional[int] = None
     error: Optional[str] = None
+    warnings: Optional[list[str]] = Field(
+        default=None,
+        description="Actionable warnings about missing data or skipped steps",
+    )
 
 
 class PipelineComputeResponse(BaseModel):
@@ -296,3 +300,7 @@ class PipelineComputeResponse(BaseModel):
     total_categories: int
     total_funds_computed: int
     total_shortlisted: int = 0
+    warnings: list[str] = Field(
+        default_factory=list,
+        description="Pipeline-level warnings about data availability",
+    )

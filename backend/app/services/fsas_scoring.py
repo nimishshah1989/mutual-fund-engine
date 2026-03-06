@@ -86,14 +86,26 @@ class FSASScorer:
             total_upserted=total_upserted,
         )
 
-        return {
+        # Determine aggregate reason if no funds were computed
+        aggregate_reason = None
+        if total_computed == 0 and category_summaries:
+            skip_reasons = [s.get("reason") for s in category_summaries if s.get("reason")]
+            if skip_reasons:
+                # Use the most common skip reason
+                aggregate_reason = max(set(skip_reasons), key=skip_reasons.count)
+
+        result: dict[str, Any] = {
             "fund_count": total_computed,
             "rows_upserted": total_upserted,
             "audits_created": total_audits,
             "categories_processed": len(category_summaries),
             "computed_date": str(date.today()),
-            "status": "completed",
+            "status": "completed" if total_computed > 0 else "skipped",
         }
+        if aggregate_reason:
+            result["reason"] = aggregate_reason
+
+        return result
 
     async def compute_for_category(
         self,
@@ -114,11 +126,40 @@ class FSASScorer:
 
         fund_exposures = await self.data_loader.load_latest_sector_exposures(fund_ids)
         active_signals = await self.data_loader.load_active_signals()
+
+        # Log data availability for diagnostics
+        funds_with_exposure = len(fund_exposures) if fund_exposures else 0
+        logger.info(
+            "fms_category_data_availability",
+            category=category_name,
+            eligible_funds=len(fund_ids),
+            funds_with_exposure=funds_with_exposure,
+            active_signal_count=len(active_signals) if active_signals else 0,
+        )
+
         if not active_signals:
+            logger.warning(
+                "fms_no_active_signals",
+                category=category_name,
+                eligible_funds=len(fund_ids),
+            )
             return {
                 "category": category_name, "fund_count": 0,
                 "computed_date": str(date.today()), "status": "skipped",
                 "reason": "no_active_signals",
+            }
+
+        if funds_with_exposure == 0:
+            logger.warning(
+                "fms_no_sector_exposure_data",
+                category=category_name,
+                eligible_funds=len(fund_ids),
+                message="Run ingestion first to populate sector exposure data",
+            )
+            return {
+                "category": category_name, "fund_count": 0,
+                "computed_date": str(date.today()), "status": "skipped",
+                "reason": "no_sector_exposure_data",
             }
 
         results = self.fsas_engine.compute(

@@ -202,6 +202,8 @@ async def _compute_full_pipeline(
         shortlist_n=body.shortlist_n,
     )
 
+    pipeline_warnings: list[str] = summary.get("warnings", [])
+
     result = PipelineComputeResult(
         category=summary.get("category", "all"),
         status=summary.get("status", "unknown"),
@@ -212,6 +214,7 @@ async def _compute_full_pipeline(
         tier_distribution=summary.get("tier_distribution"),
         shortlisted_count=summary.get("shortlisted_count"),
         error=summary.get("error"),
+        warnings=pipeline_warnings if pipeline_warnings else None,
     )
 
     return ApiResponse.ok(
@@ -220,5 +223,6 @@ async def _compute_full_pipeline(
             total_categories=1,
             total_funds_computed=result.fund_count,
             total_shortlisted=result.shortlisted_count or 0,
+            warnings=pipeline_warnings,
         ),
     )

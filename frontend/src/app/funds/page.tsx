@@ -3,13 +3,14 @@
 import { useEffect, useState, useCallback, useMemo } from "react";
 import { apiFetch } from "@/lib/api";
 import { formatDate } from "@/lib/formatters";
-import type { ApiResponse, FundScoreOverview } from "@/types/api";
+import type { ApiResponse, FundScoreOverview, MatrixCellSummary, MatrixSummaryResponse } from "@/types/api";
 import PageHeader from "@/components/PageHeader";
 import LoadingSkeleton from "@/components/LoadingSkeleton";
 import ErrorState from "@/components/ErrorState";
 import EmptyState from "@/components/EmptyState";
 import FundFilterBar from "./FundFilterBar";
 import FundTable from "./FundTable";
+import DecisionMatrix from "./DecisionMatrix";
 import type { SortField } from "./types";
 
 /* ------------------------------------------------------------------ */
@@ -18,6 +19,7 @@ import type { SortField } from "./types";
 export default function FundUniversePage() {
   const [funds, setFunds] = useState<FundScoreOverview[]>([]);
   const [categories, setCategories] = useState<string[]>([]);
+  const [matrixCells, setMatrixCells] = useState<MatrixCellSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [totalFunds, setTotalFunds] = useState(0);
@@ -35,16 +37,20 @@ export default function FundUniversePage() {
     setLoading(true);
     setError(null);
     try {
-      const [fundsRes, catsRes] = await Promise.all([
+      const [fundsRes, catsRes, matrixRes] = await Promise.all([
         apiFetch<ApiResponse<FundScoreOverview[]>>(
           "/api/v1/scores/overview?limit=1000",
         ),
         apiFetch<ApiResponse<string[]>>("/api/v1/scores/categories"),
+        apiFetch<ApiResponse<MatrixSummaryResponse>>(
+          "/api/v1/scores/matrix",
+        ),
       ]);
 
       setFunds(fundsRes.data ?? []);
       setTotalFunds(fundsRes.meta?.total ?? fundsRes.data?.length ?? 0);
       setCategories(catsRes.data ?? []);
+      setMatrixCells(matrixRes.data?.cells ?? []);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load funds");
     } finally {
@@ -169,6 +175,14 @@ export default function FundUniversePage() {
         title="Fund Universe"
         subtitle={`All ${totalFunds} funds with scores and tier classification${scoredDateSuffix}`}
       />
+
+      <div className="mb-6">
+        <DecisionMatrix
+          cells={matrixCells}
+          selectedPosition={matrixFilter}
+          onCellClick={setMatrixFilter}
+        />
+      </div>
 
       <FundFilterBar
         search={search}

@@ -7,10 +7,10 @@ import StatCard from "@/components/StatCard";
 import LoadingSkeleton from "@/components/LoadingSkeleton";
 import ErrorState from "@/components/ErrorState";
 import {
-  TierDistributionChart,
   SystemHealthPanel,
   TierActionTable,
 } from "@/components/dashboard";
+import DecisionMatrix from "@/app/funds/DecisionMatrix";
 
 export default function DashboardPage() {
   const {
@@ -27,7 +27,7 @@ export default function DashboardPage() {
     lastScoredDate,
     dataFreshness,
     morningstarFreshness,
-    tierCounts,
+    matrixCells,
     actionDistribution,
   } = useDashboardData();
 
@@ -99,9 +99,13 @@ export default function DashboardPage() {
         />
       </div>
 
-      {/* Two-column section: donut + system health */}
+      {/* Two-column section: decision matrix + system health */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-6">
-        <TierDistributionChart tierCounts={tierCounts} />
+        <DecisionMatrix
+          cells={matrixCells}
+          selectedPosition={null}
+          onCellClick={() => {}}
+        />
         <SystemHealthPanel
           health={health}
           totalFundsScored={totalFunds}

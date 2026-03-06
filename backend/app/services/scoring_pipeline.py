@@ -52,6 +52,7 @@ class ScoringPipeline:
         all_recommendations: list[dict[str, Any]] = []
         action_distribution: dict[str, int] = {}
         override_count = 0
+        fms_data_available = False
 
         for category_name in categories:
             fund_ids = await svc.data_loader.load_eligible_fund_ids(category_name)
@@ -71,6 +72,16 @@ class ScoringPipeline:
                 fsas_lookup[f.mstar_id] = float(f.fsas) if f.fsas is not None else 0.0
                 avoid_lookup[f.mstar_id] = (
                     float(f.avoid_exposure_pct) if f.avoid_exposure_pct is not None else 0.0
+                )
+
+            if fsas_lookup:
+                fms_data_available = True
+            else:
+                logger.warning(
+                    "matrix_no_fms_data_for_category",
+                    category=category_name,
+                    fund_count=len(fund_ids),
+                    message="All funds will get midpoint FMS percentile (50.0)",
                 )
 
             # Sort by QFS descending for rank assignment
@@ -189,7 +200,7 @@ class ScoringPipeline:
             override_count=override_count,
         )
 
-        return {
+        result: dict[str, Any] = {
             "fund_count": len(all_recommendations),
             "rows_upserted": rows_affected,
             "tier_distribution": tier_distribution,
@@ -197,7 +208,17 @@ class ScoringPipeline:
             "override_count": override_count,
             "computed_date": str(today),
             "status": "completed",
+            "fms_data_available": fms_data_available,
         }
+
+        if not fms_data_available:
+            logger.warning(
+                "matrix_recommendation_no_fms",
+                message="No FMS data available — all funds assigned midpoint FMS percentile (50.0). "
+                        "Set FM sector signals on the Signals page to enable FMS scoring.",
+            )
+
+        return result
 
     def _compute_percentile(self, rank: int, total: int) -> float:
         """Compute percentile from rank and total. Compresses small categories."""
@@ -274,12 +295,15 @@ class ScoringPipeline:
         )
         svc = self.service
 
+        warnings: list[str] = []
+
         pipeline_results: dict[str, Any] = {
             "category": category_name or "all",
             "trigger_event": trigger_event,
             "computed_date": str(date.today()),
             "pipeline_version": "v3_matrix",
             "layers": {},
+            "warnings": warnings,
         }
 
         # Layer 1: QFS for all funds
@@ -302,6 +326,11 @@ class ScoringPipeline:
 
         # Auto-refresh benchmark weights if stale
         benchmark_weights = await svc.ensure_benchmark_weights()
+        if not benchmark_weights:
+            warnings.append(
+                "Benchmark weights not available — refresh from System page or check Morningstar GSSB API"
+            )
+            logger.warning("pipeline_no_benchmark_weights")
 
         # Layer 2: FMS for ALL funds (no shortlist)
         try:
@@ -315,9 +344,39 @@ class ScoringPipeline:
                     trigger_event=trigger_event,
                 )
             pipeline_results["layers"]["fms"] = fms_summary
+
+            # Check if FMS was skipped due to missing signals or exposure data
+            if isinstance(fms_summary, dict):
+                fms_status = fms_summary.get("status", "")
+                fms_fund_count = fms_summary.get("fund_count", 0)
+                if fms_status == "skipped" or fms_fund_count == 0:
+                    reason = fms_summary.get("reason", "unknown")
+                    if reason == "no_active_signals":
+                        warnings.append(
+                            "No FM sector signals configured — set signals on the Signals page to enable FMS scoring"
+                        )
+                    elif reason == "no_sector_exposure_data":
+                        warnings.append(
+                            "No sector exposure data for funds — run ingestion first to populate GSSB data"
+                        )
+                    elif reason == "no_eligible_funds":
+                        warnings.append(
+                            "No eligible funds found for FMS computation"
+                        )
+                    else:
+                        warnings.append(
+                            f"FMS computation returned 0 funds (reason: {reason})"
+                        )
+                    logger.warning(
+                        "pipeline_fms_skipped",
+                        status=fms_status,
+                        reason=reason,
+                        fund_count=fms_fund_count,
+                    )
         except Exception as exc:
             logger.error("pipeline_fms_failed", error=str(exc))
             pipeline_results["layers"]["fms"] = {"status": "error", "error": str(exc)}
+            warnings.append(f"FMS computation failed: {exc}")
             # FMS failure is non-fatal — matrix will use midpoint FMS
 
         # Layer 3: Matrix classification + overrides
