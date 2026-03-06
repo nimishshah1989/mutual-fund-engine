@@ -36,6 +36,10 @@ apscheduler==3.10.4
 pandas==2.2.3
 openpyxl==3.1.5
 
+# -- MF Pulse: NAV data & benchmark prices --
+mftool==3.1
+yfinance>=0.2.36
+
 # -- Auth --
 python-jose[cryptography]==3.3.0
 passlib[bcrypt]==1.7.4

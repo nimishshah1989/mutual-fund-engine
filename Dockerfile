@@ -78,6 +78,7 @@ from app.api.v1.scores import router; \
 from app.api.v1.scores_read import router; \
 from app.api.v1.signals import router; \
 from app.api.v1.jobs import router; \
+from app.api.v1.pulse import router; \
 print('All imports OK')"
 
 # Only port 3000 is exposed (FastAPI is internal on 127.0.0.1:8000)
