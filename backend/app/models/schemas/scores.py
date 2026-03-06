@@ -41,6 +41,12 @@ class ScoreComputeRequest(BaseModel):
         max_length=100,
         description="What triggered this computation (for audit trail).",
     )
+    shortlist_n: Optional[int] = Field(
+        default=None,
+        ge=1,
+        le=20,
+        description="Top N funds per category to shortlist. Default 5 if not specified.",
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -141,7 +147,7 @@ class RecommendationDetail(BaseModel):
     category_rank_pct: float = Field(..., description="Percentile rank (0-100, 100 = best)")
     is_shortlisted: bool = Field(False, description="Whether fund is in top N for category")
     tier: str = Field(..., description="CORE / QUALITY / WATCH / CAUTION / EXIT")
-    action: str = Field(..., description="BUY / SIP / HOLD_PLUS / HOLD / REDUCE / EXIT")
+    action: str = Field(..., description="ACCUMULATE / HOLD / REDUCE / EXIT")
     override_applied: bool = Field(False, description="Whether a hard override was applied")
     override_reason: Optional[str] = Field(None, description="Human-readable override reason")
     original_tier: Optional[str] = Field(None, description="Tier before override")
@@ -221,7 +227,7 @@ class ScoreOverviewItem(BaseModel):
 
     # Recommendation fields (populated from fund_recommendation)
     tier: Optional[str] = Field(None, description="CORE / QUALITY / WATCH / CAUTION / EXIT")
-    action: Optional[str] = Field(None, description="BUY / SIP / HOLD / REDUCE / EXIT")
+    action: Optional[str] = Field(None, description="ACCUMULATE / HOLD / REDUCE / EXIT")
     qfs_rank: Optional[int] = Field(None, description="Rank within category")
     category_rank_pct: Optional[float] = Field(None, description="Percentile rank in category")
 

@@ -197,6 +197,7 @@ async def _compute_full_pipeline(
     summary = await service.compute_full_pipeline(
         category_name=body.category_name,
         trigger_event=body.trigger_event,
+        shortlist_n=body.shortlist_n,
     )
 
     result = PipelineComputeResult(

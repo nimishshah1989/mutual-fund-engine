@@ -12,17 +12,20 @@ interface ManualScoreComputeCardProps {
 
 /**
  * Card with a form to trigger manual score computation.
- * Supports layer selection (QFS / FSAS / Full Pipeline) and
- * optional category name filtering.
+ * Supports layer selection (QFS / FSAS / Full Pipeline),
+ * optional category name filtering, and top N per category for shortlisting.
  */
 export default function ManualScoreComputeCard({
   onComputeComplete,
 }: ManualScoreComputeCardProps) {
   const [selectedLayer, setSelectedLayer] = useState<LayerValue>("all");
   const [categoryName, setCategoryName] = useState("");
+  const [shortlistN, setShortlistN] = useState(5);
   const [computing, setComputing] = useState(false);
   const [computeResult, setComputeResult] = useState<ScoreComputeResult | null>(null);
   const [computeError, setComputeError] = useState<string | null>(null);
+
+  const showShortlistN = selectedLayer === "all";
 
   async function handleCompute(e: React.FormEvent) {
     e.preventDefault();
@@ -38,6 +41,9 @@ export default function ManualScoreComputeCard({
       const trimmedCategory = categoryName.trim();
       if (trimmedCategory) {
         payload.category_name = trimmedCategory;
+      }
+      if (showShortlistN) {
+        payload.shortlist_n = shortlistN;
       }
 
       const res = await apiFetch<ApiResponse<ScoreComputeResult>>(
@@ -93,7 +99,7 @@ export default function ManualScoreComputeCard({
           </div>
         </div>
 
-        <div>
+        <div className="mb-3">
           <label className="text-xs text-slate-500 mb-1 block">
             Category Name (optional)
           </label>
@@ -106,6 +112,29 @@ export default function ManualScoreComputeCard({
             className="w-full bg-white border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-700 placeholder:text-slate-400 focus:ring-2 focus:ring-teal-500 focus:border-teal-500 outline-none"
           />
         </div>
+
+        {/* Top N per category — only visible when running full pipeline */}
+        {showShortlistN && (
+          <div className="mb-3">
+            <label className="text-xs text-slate-500 mb-1 block">
+              Funds to Shortlist per Category
+            </label>
+            <div className="flex items-center gap-3">
+              <input
+                type="number"
+                min={1}
+                max={20}
+                value={shortlistN}
+                onChange={(e) => setShortlistN(Math.max(1, Math.min(20, Number(e.target.value) || 1)))}
+                aria-label="Number of funds to shortlist per category"
+                className="w-20 bg-white border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-700 font-mono text-center focus:ring-2 focus:ring-teal-500 focus:border-teal-500 outline-none"
+              />
+              <span className="text-xs text-slate-400">
+                Top N funds per SEBI category (1-20)
+              </span>
+            </div>
+          </div>
+        )}
 
         {computeError && (
           <p className="text-xs text-red-600 mt-2">{computeError}</p>

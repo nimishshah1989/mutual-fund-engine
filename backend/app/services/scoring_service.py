@@ -241,11 +241,16 @@ class ScoringService:
         return await self._pipeline.assign_recommendations(trigger_event=trigger_event)
 
     async def compute_full_pipeline(
-        self, category_name: Optional[str] = None, trigger_event: str = "full_pipeline",
+        self,
+        category_name: Optional[str] = None,
+        trigger_event: str = "full_pipeline",
+        shortlist_n: Optional[int] = None,
     ) -> dict[str, Any]:
         """Run QFS -> shortlist -> FSAS -> recommend pipeline."""
         return await self._pipeline.compute_full_pipeline(
-            category_name=category_name, trigger_event=trigger_event,
+            category_name=category_name,
+            trigger_event=trigger_event,
+            shortlist_n=shortlist_n or DEFAULT_SHORTLIST_N,
         )
 
     async def compute_full_pipeline_all_categories(

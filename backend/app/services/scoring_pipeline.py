@@ -186,6 +186,7 @@ class ScoringPipeline:
         self,
         category_name: Optional[str] = None,
         trigger_event: str = "full_pipeline",
+        shortlist_n: int = 5,
     ) -> dict[str, Any]:
         """
         Run the complete scoring pipeline:
@@ -224,7 +225,9 @@ class ScoringPipeline:
 
         # Layer 2a: Generate shortlist
         try:
-            shortlist_summary = await svc.generate_shortlist(trigger_event=trigger_event)
+            shortlist_summary = await svc.generate_shortlist(
+                shortlist_n=shortlist_n, trigger_event=trigger_event,
+            )
             pipeline_results["layers"]["shortlist"] = shortlist_summary
         except Exception as exc:
             logger.error("pipeline_shortlist_failed", error=str(exc))

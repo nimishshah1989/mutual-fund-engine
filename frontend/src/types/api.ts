@@ -181,6 +181,7 @@ export interface ScoreComputePayload {
   layer: "qfs" | "fsas" | "all";
   category_name?: string;
   trigger_event?: string;
+  shortlist_n?: number;
 }
 
 export interface ScoreComputeResult {
