@@ -25,11 +25,11 @@ logger = structlog.get_logger(__name__)
 
 router = APIRouter(tags=["Health"])
 
-# Staleness thresholds — data older than these is flagged as stale
+# Staleness thresholds — data older than these is flagged as stale.
+# Only real data feeds are tracked. JHV_MASTER and MONTHLY_RECOMPUTE were
+# placeholder checks that caused false warnings on fresh deploys.
 STALENESS_THRESHOLDS = {
     "MORNINGSTAR_API": timedelta(hours=24),       # Daily refresh expected
-    "JHV_MASTER": timedelta(days=8),              # Weekly refresh expected
-    "MONTHLY_RECOMPUTE": timedelta(days=35),      # Monthly refresh expected
 }
 
 

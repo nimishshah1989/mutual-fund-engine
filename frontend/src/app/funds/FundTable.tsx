@@ -57,7 +57,7 @@ export default function FundTable({
                 onClick={() => onSort("qfs")}
                 className={sortableHeaderClasses}
               >
-                QFS{sortIndicator("qfs", sortField, sortDesc)}
+                Fund Score{sortIndicator("qfs", sortField, sortDesc)}
               </th>
               <th className="px-4 py-3 text-center text-xs font-semibold text-slate-400 uppercase tracking-wider">
                 Tier / Action
@@ -66,7 +66,7 @@ export default function FundTable({
                 onClick={() => onSort("qfs_rank")}
                 className={sortableHeaderClasses}
               >
-                QFS Rank{sortIndicator("qfs_rank", sortField, sortDesc)}
+                Score Rank{sortIndicator("qfs_rank", sortField, sortDesc)}
               </th>
               <th
                 onClick={() => onSort("data_completeness_pct")}

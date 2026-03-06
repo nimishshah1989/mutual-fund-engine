@@ -8,6 +8,7 @@ import ActionBadge from "@/components/ActionBadge";
 import AlignmentDetail from "./AlignmentDetail";
 import {
   type CategoryGroup,
+  type ShortlistSortField,
   scoreColorClass,
   avoidExposureClass,
   topAlignedSectorNames,
@@ -18,6 +19,9 @@ import {
 /* ------------------------------------------------------------------ */
 interface ShortlistTableProps {
   categoryGroups: CategoryGroup[];
+  sortField: ShortlistSortField | null;
+  sortDesc: boolean;
+  onSort: (field: ShortlistSortField) => void;
 }
 
 /* ------------------------------------------------------------------ */
@@ -135,19 +139,51 @@ function FundRow({ fund, rowIndex, isExpanded, onToggle }: FundRowProps) {
 }
 
 /* ------------------------------------------------------------------ */
-/*  Table header                                                       */
+/*  Sort indicator arrow                                               */
 /* ------------------------------------------------------------------ */
-const COLUMNS = [
+function SortIndicator({
+  field,
+  activeField,
+  desc,
+}: {
+  field: ShortlistSortField;
+  activeField: ShortlistSortField | null;
+  desc: boolean;
+}) {
+  if (activeField !== field) {
+    // Show a subtle indicator that the column is sortable
+    return (
+      <span className="ml-1 text-slate-300 text-[10px]">&#9650;&#9660;</span>
+    );
+  }
+  return (
+    <span className="ml-1 text-teal-600 text-xs">
+      {desc ? "\u25BC" : "\u25B2"}
+    </span>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  Column definitions                                                 */
+/* ------------------------------------------------------------------ */
+interface ColumnDef {
+  label: string;
+  align: string;
+  width: string;
+  sortField?: ShortlistSortField;
+}
+
+const COLUMNS: readonly ColumnDef[] = [
   { label: "#", align: "text-left", width: "w-10" },
   { label: "Fund Name", align: "text-left", width: "" },
   { label: "Category", align: "text-left", width: "" },
-  { label: "QFS", align: "text-right", width: "" },
-  { label: "QFS Rank", align: "text-right", width: "" },
-  { label: "FSAS", align: "text-right", width: "" },
+  { label: "Fund Score", align: "text-right", width: "", sortField: "qfs_score" },
+  { label: "Score Rank", align: "text-right", width: "" },
+  { label: "Alignment", align: "text-right", width: "", sortField: "fsas" },
   { label: "Tier", align: "text-center", width: "" },
   { label: "Action", align: "text-center", width: "" },
   { label: "Top Aligned Sectors", align: "text-left", width: "" },
-  { label: "Avoid Exp %", align: "text-right", width: "" },
+  { label: "Avoid Exposure %", align: "text-right", width: "", sortField: "avoid_exposure_pct" },
 ] as const;
 
 /* ------------------------------------------------------------------ */
@@ -155,6 +191,9 @@ const COLUMNS = [
 /* ------------------------------------------------------------------ */
 export default function ShortlistTable({
   categoryGroups,
+  sortField,
+  sortDesc,
+  onSort,
 }: ShortlistTableProps) {
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
@@ -171,14 +210,37 @@ export default function ShortlistTable({
         <table className="w-full">
           <thead>
             <tr className="border-b border-slate-200">
-              {COLUMNS.map((col) => (
-                <th
-                  key={col.label}
-                  className={`px-4 py-3 ${col.align} text-xs font-semibold text-slate-400 uppercase tracking-wider ${col.width}`}
-                >
-                  {col.label}
-                </th>
-              ))}
+              {COLUMNS.map((col) => {
+                const isSortable = col.sortField !== undefined;
+                const isActive = sortField === col.sortField;
+
+                return (
+                  <th
+                    key={col.label}
+                    onClick={
+                      isSortable && col.sortField
+                        ? () => onSort(col.sortField!)
+                        : undefined
+                    }
+                    className={`px-4 py-3 ${col.align} text-xs font-semibold text-slate-400 uppercase tracking-wider ${col.width} ${
+                      isSortable
+                        ? "cursor-pointer select-none hover:text-slate-600 transition-colors"
+                        : ""
+                    } ${isActive ? "text-teal-600" : ""}`}
+                  >
+                    <span className="inline-flex items-center">
+                      {col.label}
+                      {isSortable && col.sortField && (
+                        <SortIndicator
+                          field={col.sortField}
+                          activeField={sortField}
+                          desc={sortDesc}
+                        />
+                      )}
+                    </span>
+                  </th>
+                );
+              })}
             </tr>
           </thead>
           <tbody>

@@ -159,7 +159,7 @@ class QFSEngine:
                 }
                 if raw_val is None:
                     missing.append({"metric": metric_name, "horizon": horizon, "reason": "data_unavailable"})
-                if priority == "must_have" and horizon in SCORING_HORIZONS:
+                if priority == "must_have" and horizon in SCORING_HORIZONS and horizon in config["horizons"]:
                     must_have_comp.setdefault(metric_name, {})[horizon] = raw_val
 
         # Compute per-horizon scores using two-tier weighted blend

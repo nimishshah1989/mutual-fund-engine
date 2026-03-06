@@ -11,7 +11,7 @@ export default function HardOverridesSection() {
       </h3>
       <p className="text-sm text-slate-500 mb-4">
         Certain conditions trigger automatic tier downgrades regardless of the
-        QFS percentile rank. Overrides can only downgrade a tier &mdash; never
+        fund score percentile rank. Overrides can only downgrade a tier &mdash; never
         upgrade.
       </p>
       <div className="space-y-3">

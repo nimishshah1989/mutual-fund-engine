@@ -10,7 +10,7 @@ export default function ActionReferenceSection() {
         Action Reference
       </h3>
       <p className="text-sm text-slate-500 mb-4">
-        Six possible actions, from strongest conviction (BUY) to exit
+        Four possible actions, from strongest conviction (ACCUMULATE) to exit
         recommendation.
       </p>
       <div className="overflow-hidden rounded-lg border border-slate-200">

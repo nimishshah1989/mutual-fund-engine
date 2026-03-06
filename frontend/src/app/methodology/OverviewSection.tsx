@@ -6,47 +6,48 @@ export default function OverviewSection() {
     <div className="bg-white rounded-xl border border-slate-200 p-6 mb-6">
       <h3 className="text-base font-semibold text-slate-800 mb-3">Overview</h3>
       <p className="text-sm text-slate-600 leading-relaxed">
-        The MF Recommendation Engine uses a{" "}
+        The Recommendation Engine uses a{" "}
         <span className="font-semibold text-slate-800">
           two-filter pipeline
         </span>{" "}
         to evaluate every mutual fund in the Indian equity universe. First, the{" "}
         <span className="font-semibold text-slate-800">
-          Quantitative Fund Score (QFS)
+          Quantitative Fund Score
         </span>{" "}
-        ranks all funds within their SEBI category using 13 performance and risk
+        ranks all funds within their SEBI category using 12 performance and risk
         metrics. Then, the top funds are shortlisted and evaluated against the
         fund manager&apos;s sector views via the{" "}
         <span className="font-semibold text-slate-800">
-          FM Sector Alignment Score (FSAS)
+          Sector Alignment Score
         </span>
-        . QFS and FSAS are never blended into a single composite score &mdash;
-        they serve as independent layers that filter and refine recommendations.
+        . These two scores are never blended into a single composite &mdash;
+        they serve as independent layers. Tier and action are determined by
+        fund score percentile; sector alignment provides additional context.
       </p>
 
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mt-5">
         <PipelineStep
           step="1"
-          title="QFS Scoring"
+          title="Fund Scoring"
           description="Score all funds on 12 metrics across 3 scoring horizons (1Y-5Y)"
           label="All Funds"
         />
         <PipelineStep
           step="2"
           title="Shortlist"
-          description="Select top 5 funds per SEBI category by QFS rank"
+          description="Select top 5 funds per SEBI category by score rank"
           label="Top N/Category"
         />
         <PipelineStep
           step="3"
-          title="FSAS Scoring"
+          title="Sector Alignment"
           description="Evaluate shortlisted funds against FM sector signals"
           label="Shortlisted Only"
         />
         <PipelineStep
           step="4"
           title="Recommendation"
-          description="Assign tier from QFS percentile, refine action with FSAS"
+          description="Assign tier from fund score percentile, map to action"
           label="Tier + Action"
         />
       </div>

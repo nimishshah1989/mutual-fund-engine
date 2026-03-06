@@ -8,7 +8,7 @@ export default function ShortlistSection() {
         Step 2: Shortlist (Top N per Category)
       </h3>
       <p className="text-sm text-slate-500 mb-4">
-        After QFS scoring, the top funds within each SEBI category are
+        After fund scoring, the top funds within each SEBI category are
         shortlisted for deeper analysis.
       </p>
 
@@ -17,13 +17,15 @@ export default function ShortlistSection() {
           <span className="font-semibold text-slate-800">
             Rank within category
           </span>{" "}
-          &mdash; All funds are ranked by QFS score within their SEBI
-          Morningstar category. Rank 1 = highest QFS in category.
+          &mdash; All funds are ranked by fund score within their SEBI
+          Morningstar category. Rank 1 = highest score in category.
         </StepItem>
         <StepItem number={2}>
           <span className="font-semibold text-slate-800">Select top N</span>{" "}
-          &mdash; The top 5 funds per category (configurable) are shortlisted.
-          Only shortlisted funds proceed to FSAS evaluation.
+          &mdash; The top{" "}
+          <span className="font-mono font-semibold">5</span> funds per category
+          (system default, configurable) are shortlisted. Only shortlisted funds
+          proceed to sector alignment evaluation.
         </StepItem>
         <StepItem number={3}>
           <span className="font-semibold text-slate-800">
@@ -38,11 +40,11 @@ export default function ShortlistSection() {
       <div className="mt-4 bg-blue-50 border border-blue-200 rounded-lg p-4">
         <p className="text-sm font-semibold text-blue-800">Why shortlist?</p>
         <p className="text-sm text-blue-700 mt-1">
-          FSAS scoring requires comparing fund sector exposure against FM
-          signals &mdash; a more nuanced analysis. By first filtering through
-          QFS, we focus this deeper analysis on only the highest-quality funds.
-          Non-shortlisted funds still receive QFS-based tier and action
-          recommendations &mdash; they just don&apos;t get FSAS-refined actions.
+          Sector alignment scoring requires comparing fund sector exposure
+          against FM signals &mdash; a more nuanced analysis. By first filtering
+          through the quantitative score, we focus this deeper analysis on only
+          the highest-quality funds. Non-shortlisted funds still receive
+          score-based tier and action recommendations.
         </p>
       </div>
     </div>

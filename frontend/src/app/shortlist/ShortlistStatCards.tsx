@@ -34,13 +34,13 @@ function buildStatCards(stats: ShortlistStats): StatCardItem[] {
       valueColor: "text-slate-800",
     },
     {
-      label: "Average QFS",
+      label: "Average Fund Score",
       value: stats.avgQfs.toFixed(1),
       subtitle: "Across shortlisted funds",
       valueColor: "text-teal-600",
     },
     {
-      label: "Funds with FSAS",
+      label: "Funds with Alignment",
       value: String(stats.fundsWithFsas),
       subtitle: "Sector alignment scored",
       valueColor: "text-slate-800",

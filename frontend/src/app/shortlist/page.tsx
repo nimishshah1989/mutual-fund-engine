@@ -9,16 +9,19 @@ import LoadingSkeleton from "@/components/LoadingSkeleton";
 import ErrorState from "@/components/ErrorState";
 import EmptyState from "@/components/EmptyState";
 import ShortlistStatCards from "./ShortlistStatCards";
+import ShortlistFilterBar from "./ShortlistFilterBar";
 import ShortlistTable from "./ShortlistTable";
 import {
+  type ShortlistSortField,
   groupByCategory,
   computeShortlistStats,
+  filterShortlist,
+  sortShortlist,
 } from "./shortlist-helpers";
 
 /* ------------------------------------------------------------------ */
 /*  Page header constants                                              */
 /* ------------------------------------------------------------------ */
-const PAGE_EMOJI = "\u2B50";
 const PAGE_TITLE = "Shortlisted Funds";
 const PAGE_SUBTITLE_BASE =
   "Top funds per category \u2014 FM recommendation output";
@@ -31,6 +34,15 @@ export default function ShortlistPage() {
   const [funds, setFunds] = useState<ShortlistItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  /* ----- filter state ----- */
+  const [search, setSearch] = useState("");
+  const [categoryFilter, setCategoryFilter] = useState("");
+  const [tierFilter, setTierFilter] = useState("");
+
+  /* ----- sort state ----- */
+  const [sortField, setSortField] = useState<ShortlistSortField | null>(null);
+  const [sortDesc, setSortDesc] = useState(true);
 
   /* ----- fetch shortlisted funds ----- */
   const fetchData = useCallback(async () => {
@@ -54,9 +66,52 @@ export default function ShortlistPage() {
     fetchData();
   }, [fetchData]);
 
-  /* ----- derived data ----- */
-  const stats = useMemo(() => computeShortlistStats(funds), [funds]);
-  const categoryGroups = useMemo(() => groupByCategory(funds), [funds]);
+  /* ----- sort toggle handler ----- */
+  const handleSort = useCallback(
+    (field: ShortlistSortField) => {
+      if (sortField === field) {
+        // Toggle direction; if already ascending, clear sort
+        if (!sortDesc) {
+          setSortField(null);
+          setSortDesc(true);
+        } else {
+          setSortDesc(false);
+        }
+      } else {
+        setSortField(field);
+        setSortDesc(true);
+      }
+    },
+    [sortField, sortDesc],
+  );
+
+  /* ----- derived: unique sorted categories from ALL funds ----- */
+  const categories = useMemo(() => {
+    const catSet = new Set(funds.map((f) => f.category_name));
+    return Array.from(catSet).sort((a, b) => a.localeCompare(b));
+  }, [funds]);
+
+  /* ----- derived: filtered -> sorted -> grouped ----- */
+  const filteredFunds = useMemo(
+    () => filterShortlist(funds, search, categoryFilter, tierFilter),
+    [funds, search, categoryFilter, tierFilter],
+  );
+
+  const sortedFunds = useMemo(
+    () => sortShortlist(filteredFunds, sortField, sortDesc),
+    [filteredFunds, sortField, sortDesc],
+  );
+
+  const categoryGroups = useMemo(
+    () => groupByCategory(sortedFunds),
+    [sortedFunds],
+  );
+
+  /* ----- stats computed from filtered funds ----- */
+  const stats = useMemo(
+    () => computeShortlistStats(filteredFunds),
+    [filteredFunds],
+  );
 
   /* ----- subtitle with scored date ----- */
   const subtitle = useMemo(() => {
@@ -71,7 +126,6 @@ export default function ShortlistPage() {
     return (
       <div>
         <PageHeader
-          emoji={PAGE_EMOJI}
           title={PAGE_TITLE}
           subtitle={PAGE_SUBTITLE_BASE}
         />
@@ -88,7 +142,6 @@ export default function ShortlistPage() {
     return (
       <div>
         <PageHeader
-          emoji={PAGE_EMOJI}
           title={PAGE_TITLE}
           subtitle={PAGE_SUBTITLE_BASE}
         />
@@ -102,7 +155,6 @@ export default function ShortlistPage() {
     return (
       <div>
         <PageHeader
-          emoji={PAGE_EMOJI}
           title={PAGE_TITLE}
           subtitle={PAGE_SUBTITLE_BASE}
         />
@@ -118,19 +170,35 @@ export default function ShortlistPage() {
   return (
     <div>
       <PageHeader
-        emoji={PAGE_EMOJI}
         title={PAGE_TITLE}
         subtitle={subtitle}
       />
 
       <ShortlistStatCards stats={stats} />
 
-      <ShortlistTable categoryGroups={categoryGroups} />
+      <ShortlistFilterBar
+        search={search}
+        onSearchChange={setSearch}
+        categoryFilter={categoryFilter}
+        onCategoryChange={setCategoryFilter}
+        tierFilter={tierFilter}
+        onTierChange={setTierFilter}
+        categories={categories}
+        displayCount={filteredFunds.length}
+        totalCount={funds.length}
+      />
+
+      <ShortlistTable
+        categoryGroups={categoryGroups}
+        sortField={sortField}
+        sortDesc={sortDesc}
+        onSort={handleSort}
+      />
 
       {/* Footer metadata */}
       <div className="mt-4 flex items-center justify-between text-xs text-slate-400">
         <p>
-          Showing {funds.length} shortlisted funds across{" "}
+          Showing {filteredFunds.length} shortlisted funds across{" "}
           {stats.categoriesCovered} categories
         </p>
         <p>

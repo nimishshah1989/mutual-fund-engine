@@ -45,18 +45,18 @@ export const TIER_PERCENTILES: TierPercentile[] = [
   {
     tier: "CORE",
     range: "90th - 100th",
-    action: "BUY",
+    action: "ACCUMULATE",
     color: "bg-emerald-600 text-white",
     description:
-      "Top 10% of category by QFS. High conviction for fresh deployment. Shortlisted funds with strong FSAS may get BUY action.",
+      "Top 10% of category. High conviction for fresh deployment — strong buy.",
   },
   {
     tier: "QUALITY",
     range: "70th - 89th",
-    action: "SIP",
+    action: "ACCUMULATE",
     color: "bg-blue-600 text-white",
     description:
-      "Solid funds in the top 30%. Suitable for systematic investment. Shortlisted funds with high sector alignment may be upgraded to BUY.",
+      "Solid funds in the top 30%. Good candidates for portfolio building.",
   },
   {
     tier: "WATCH",
@@ -64,7 +64,7 @@ export const TIER_PERCENTILES: TierPercentile[] = [
     action: "HOLD",
     color: "bg-amber-500 text-white",
     description:
-      "Middle of the pack. Existing positions may be held but new investment is not recommended. High FSAS may upgrade to HOLD+.",
+      "Middle of the pack. Existing positions may be held but new investment is not recommended.",
   },
   {
     tier: "CAUTION",
@@ -185,27 +185,16 @@ export const SCORING_HORIZONS: ScoringHorizon[] = [
 
 export const V2_ACTIONS: ActionDefinition[] = [
   {
-    action: "BUY",
-    tier: "CORE",
+    action: "ACCUMULATE",
+    tier: "CORE / QUALITY",
     description:
-      "Deploy fresh capital. Highest conviction based on quantitative strength and sector alignment.",
-  },
-  {
-    action: "SIP",
-    tier: "QUALITY",
-    description:
-      "Systematic investment. Consistent performer suitable for periodic allocation.",
-  },
-  {
-    action: "HOLD+",
-    tier: "WATCH (with FSAS)",
-    description:
-      "Hold with added conviction. WATCH-tier fund with strong sector alignment warrants keeping the position.",
+      "Add to portfolio. Strong quantitative profile — suitable for fresh deployment or systematic investment.",
   },
   {
     action: "HOLD",
     tier: "WATCH",
-    description: "Maintain existing position. No new investment recommended.",
+    description:
+      "Maintain existing position. No new investment recommended — monitor for changes.",
   },
   {
     action: "REDUCE",
@@ -217,7 +206,7 @@ export const V2_ACTIONS: ActionDefinition[] = [
     action: "EXIT",
     tier: "EXIT",
     description:
-      "Full redemption. Bottom of category with no sector alignment support.",
+      "Full redemption. Bottom of category — redeem and reallocate capital.",
   },
 ];
 

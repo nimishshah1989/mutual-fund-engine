@@ -34,7 +34,6 @@ export default function DashboardPage() {
     return (
       <div>
         <PageHeader
-          emoji="📊"
           title="Dashboard"
           subtitle="MF Recommendation Engine"
         />
@@ -50,7 +49,6 @@ export default function DashboardPage() {
     return (
       <div>
         <PageHeader
-          emoji="📊"
           title="Dashboard"
           subtitle="MF Recommendation Engine"
         />
@@ -62,7 +60,6 @@ export default function DashboardPage() {
   return (
     <div>
       <PageHeader
-        emoji="📊"
         title="Dashboard"
         subtitle={
           lastScoredDate
@@ -75,7 +72,7 @@ export default function DashboardPage() {
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
         <StatCard label="Total Funds" value={String(totalFunds)} colored />
         <StatCard
-          label="Avg QFS"
+          label="Avg Fund Score"
           value={formatScore(avgQFS)}
           colored
         />

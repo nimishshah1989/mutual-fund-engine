@@ -131,9 +131,7 @@ export function useDashboardData(): DashboardData {
       if (!map[t]) {
         map[t] = {
           tier: t,
-          buy: 0,
-          sip: 0,
-          hold_plus: 0,
+          accumulate: 0,
           hold: 0,
           reduce: 0,
           exit: 0,
@@ -141,9 +139,7 @@ export function useDashboardData(): DashboardData {
         };
       }
       const a = (f.action ?? "").toUpperCase();
-      if (a === "BUY") map[t].buy++;
-      else if (a === "SIP") map[t].sip++;
-      else if (a === "HOLD_PLUS") map[t].hold_plus++;
+      if (a === "ACCUMULATE") map[t].accumulate++;
       else if (a === "HOLD") map[t].hold++;
       else if (a === "REDUCE") map[t].reduce++;
       else if (a === "EXIT") map[t].exit++;

@@ -13,13 +13,13 @@ export default function QFSScoringSection() {
   return (
     <div className="bg-white rounded-xl border border-slate-200 p-6 mb-6">
       <h3 className="text-base font-semibold text-slate-800 mb-1">
-        Step 1: Quantitative Fund Score (QFS)
+        Step 1: Quantitative Fund Score
       </h3>
       <p className="text-sm text-slate-500 mb-4">
         A data-driven score based on 12 performance and risk metrics, classified
         into two tiers and evaluated across 3 scoring horizons (1Y, 3Y, 5Y).
         Computed for all funds in the universe. 10Y data is still extracted and
-        displayed for reference but does not contribute to the QFS.
+        displayed for reference but does not contribute to the score.
       </p>
 
       {/* Two-tier weighting explanation */}
@@ -84,7 +84,7 @@ export default function QFSScoringSection() {
       </div>
       <p className="text-xs text-slate-400 mt-2">
         10Y data is extracted and displayed on the fund detail page but does not
-        contribute to the WFS or QFS score. Very few Indian MFs have a 10-year
+        contribute to the Weighted Fund Score or final score. Very few Indian MFs have a 10-year
         track record, and including 10Y artificially narrows the qualified pool.
       </p>
 
@@ -104,7 +104,7 @@ export default function QFSScoringSection() {
           fund with all must-have data present across 1Y, 3Y, and 5Y = 100%
           complete, even if all good-to-have metrics are missing. A fund with
           only 1Y data has ~29% completeness (5/17). Funds with less than 60%
-          must-have completeness receive a proportional QFS penalty (see Hard
+          must-have completeness receive a proportional score penalty (see Hard
           Overrides below).
         </p>
       </div>
@@ -116,7 +116,7 @@ function CalculationSteps() {
   return (
     <div className="mt-6 space-y-3">
       <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
-        How The QFS Is Calculated
+        How The Fund Score Is Calculated
       </p>
       <div className="space-y-2 text-sm text-slate-600">
         <StepItem number={1}>
@@ -171,15 +171,16 @@ function CalculationSteps() {
             Weighted combination (1Y-5Y only)
           </span>{" "}
           &mdash; Combine horizon scores using weights (1Y: 1, 3Y: 2, 5Y: 3)
-          to produce the Weighted Fund Score (WFS). 10Y is excluded from this
+          to produce the Weighted Fund Score. 10Y is excluded from this
           computation.
         </StepItem>
         <StepItem number={5}>
           <span className="font-semibold text-slate-800">
             Final normalisation
           </span>{" "}
-          &mdash; Normalise WFS across all funds in the category to produce the
-          final QFS (0-100). Apply completeness penalty for funds below 60%
+          &mdash; Normalise the Weighted Fund Score across all funds in the
+          category to produce the final Quantitative Fund Score (0-100). Apply
+          completeness penalty for funds below 60%
           must-have data coverage.
         </StepItem>
       </div>

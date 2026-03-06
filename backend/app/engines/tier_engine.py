@@ -43,10 +43,10 @@ class TierEngine:
         ("CAUTION", 20.0),
     ]
 
-    # Tier → recommended action
+    # Tier → recommended action (simplified 4-action system)
     TIER_ACTIONS: dict[str, str] = {
-        "CORE": "BUY",
-        "QUALITY": "SIP",
+        "CORE": "ACCUMULATE",
+        "QUALITY": "ACCUMULATE",
         "WATCH": "HOLD",
         "CAUTION": "REDUCE",
         "EXIT": "EXIT",
@@ -77,32 +77,6 @@ class TierEngine:
     def assign_action(self, tier: str) -> str:
         """Map a tier to its recommended action."""
         return self.TIER_ACTIONS.get(tier, "HOLD")
-
-    def refine_action_with_fsas(
-        self, tier: str, base_action: str,
-        fsas: Optional[float], avoid_exposure_pct: float = 0.0,
-    ) -> str:
-        """Refine action based on FSAS alignment (shortlisted funds only)."""
-        if fsas is None:
-            return base_action
-
-        # High FSAS on QUALITY tier → upgrade to BUY
-        if tier == "QUALITY" and fsas >= 75.0:
-            return "BUY"
-
-        # Low FSAS on CORE tier → downgrade to SIP (hold conviction, but slower)
-        if tier == "CORE" and fsas < 30.0:
-            return "SIP"
-
-        # WATCH with high FSAS → HOLD_PLUS (more conviction than plain HOLD)
-        if tier == "WATCH" and fsas >= 70.0:
-            return "HOLD_PLUS"
-
-        # Significant AVOID exposure → always cap at HOLD regardless of tier
-        if avoid_exposure_pct > 15.0 and base_action in ("BUY", "SIP"):
-            return "HOLD"
-
-        return base_action
 
     def apply_overrides(
         self,
@@ -238,26 +212,26 @@ class TierEngine:
         parts: list[str] = []
 
         parts.append(
-            f"QFS {qfs:.1f} (percentile {percentile:.0f}th in category)"
+            f"Fund Score {qfs:.1f} (percentile {percentile:.0f}th in category)"
         )
         parts.append(f"assigns to {tier} tier with {action} recommendation.")
 
         if is_shortlisted and fsas is not None:
             if fsas >= 70:
                 parts.append(
-                    f"Strong sector alignment (FSAS {fsas:.1f}) supports conviction."
+                    f"Strong sector alignment ({fsas:.1f}) supports conviction."
                 )
             elif fsas >= 40:
                 parts.append(
-                    f"Moderate sector alignment (FSAS {fsas:.1f})."
+                    f"Moderate sector alignment ({fsas:.1f})."
                 )
             else:
                 parts.append(
-                    f"Weak sector alignment (FSAS {fsas:.1f}) — "
+                    f"Weak sector alignment ({fsas:.1f}) — "
                     "misaligned with current FM sector views."
                 )
         elif not is_shortlisted:
-            parts.append("Not shortlisted — FSAS not computed.")
+            parts.append("Not shortlisted — sector alignment not computed.")
 
         if override_reason:
             parts.append(f"Override applied: {override_reason}.")

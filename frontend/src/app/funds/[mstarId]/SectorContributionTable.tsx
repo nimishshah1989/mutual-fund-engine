@@ -1,6 +1,7 @@
 "use client";
 
 import SignalBadge from "@/components/SignalBadge";
+import { sectorBgColor } from "@/lib/colors";
 import type { FSASDetail, SectorContribution } from "@/types/api";
 
 /** Confidence badge -- color-coded HIGH/MEDIUM/LOW */
@@ -50,7 +51,7 @@ export default function SectorContributionTable({
         <p className="text-sm text-slate-400 text-center py-8">
           {fsas
             ? "No sector contribution data available"
-            : "FSAS not computed \u2014 only shortlisted funds receive sector alignment scoring"}
+            : "Sector alignment not computed \u2014 only shortlisted funds receive alignment scoring"}
         </p>
       ) : (
         <div className="overflow-x-auto">
@@ -87,7 +88,10 @@ export default function SectorContributionTable({
                   className="border-b border-slate-100 hover:bg-slate-50"
                 >
                   <td className="px-4 py-3 text-sm font-medium text-slate-800">
-                    {sc.sector}
+                    <span className="inline-flex items-center gap-1.5">
+                      <span className={`w-2 h-2 rounded-full flex-shrink-0 ${sectorBgColor(sc.sector)}`} />
+                      {sc.sector}
+                    </span>
                   </td>
                   <td className="px-4 py-3 text-right text-sm font-mono text-slate-700">
                     {sc.exposure_pct.toFixed(1)}%

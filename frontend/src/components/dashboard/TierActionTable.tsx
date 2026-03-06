@@ -13,9 +13,7 @@ function cellValue(count: number): string {
 }
 
 const ACTION_HEADERS = [
-  "BUY",
-  "SIP",
-  "HOLD+",
+  "ACCUMULATE",
   "HOLD",
   "REDUCE",
   "EXIT",
@@ -59,13 +57,7 @@ export default function TierActionTable({ rows }: TierActionTableProps) {
                   <TierBadge tier={row.tier} />
                 </td>
                 <td className="px-4 py-3 text-right text-sm font-mono text-slate-700">
-                  {cellValue(row.buy)}
-                </td>
-                <td className="px-4 py-3 text-right text-sm font-mono text-slate-700">
-                  {cellValue(row.sip)}
-                </td>
-                <td className="px-4 py-3 text-right text-sm font-mono text-slate-700">
-                  {cellValue(row.hold_plus)}
+                  {cellValue(row.accumulate)}
                 </td>
                 <td className="px-4 py-3 text-right text-sm font-mono text-slate-700">
                   {cellValue(row.hold)}

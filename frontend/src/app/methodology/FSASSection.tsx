@@ -3,12 +3,13 @@
 // across 11 Morningstar sectors.
 
 import { SIGNAL_WEIGHTS, MORNINGSTAR_SECTORS } from "./constants";
+import { sectorBgColor } from "@/lib/colors";
 
 export default function FSASSection() {
   return (
     <div className="bg-white rounded-xl border border-slate-200 p-6 mb-6">
       <h3 className="text-base font-semibold text-slate-800 mb-1">
-        Step 3: FM Sector Alignment Score (FSAS)
+        Step 3: Sector Alignment Score
       </h3>
       <p className="text-sm text-slate-500 mb-4">
         Computed only for shortlisted funds. Measures how well a fund&apos;s
@@ -71,8 +72,9 @@ export default function FSASSection() {
           {MORNINGSTAR_SECTORS.map((sector) => (
             <span
               key={sector}
-              className="text-xs bg-white border border-slate-200 rounded px-2 py-1 text-slate-600"
+              className="text-xs bg-white border border-slate-200 rounded px-2 py-1 text-slate-600 inline-flex items-center gap-1.5"
             >
+              <span className={`w-2 h-2 rounded-full flex-shrink-0 ${sectorBgColor(sector)}`} />
               {sector}
             </span>
           ))}

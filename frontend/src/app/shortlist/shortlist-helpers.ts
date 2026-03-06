@@ -24,6 +24,11 @@ export interface ShortlistStats {
 }
 
 /* ------------------------------------------------------------------ */
+/*  Sort field type for sortable numeric columns                       */
+/* ------------------------------------------------------------------ */
+export type ShortlistSortField = "qfs_score" | "fsas" | "avoid_exposure_pct";
+
+/* ------------------------------------------------------------------ */
 /*  Score color class based on threshold                                */
 /* ------------------------------------------------------------------ */
 export function scoreColorClass(score: number | null): string {
@@ -43,8 +48,71 @@ export function avoidExposureClass(pct: number | null): string {
 }
 
 /* ------------------------------------------------------------------ */
+/*  Filter shortlist by search text, category, and tier                */
+/* ------------------------------------------------------------------ */
+export function filterShortlist(
+  funds: ShortlistItem[],
+  search: string,
+  categoryFilter: string,
+  tierFilter: string,
+): ShortlistItem[] {
+  let filtered = funds;
+
+  // Search by fund name or mstar_id (case-insensitive partial match)
+  if (search.trim() !== "") {
+    const needle = search.trim().toLowerCase();
+    filtered = filtered.filter((f) => {
+      const nameMatch = f.fund_name
+        ? f.fund_name.toLowerCase().includes(needle)
+        : false;
+      const idMatch = f.mstar_id.toLowerCase().includes(needle);
+      return nameMatch || idMatch;
+    });
+  }
+
+  // Filter by exact category match
+  if (categoryFilter !== "") {
+    filtered = filtered.filter((f) => f.category_name === categoryFilter);
+  }
+
+  // Filter by tier (case-insensitive exact match)
+  if (tierFilter !== "") {
+    const tierUpper = tierFilter.toUpperCase();
+    filtered = filtered.filter(
+      (f) => f.tier !== null && f.tier.toUpperCase() === tierUpper,
+    );
+  }
+
+  return filtered;
+}
+
+/* ------------------------------------------------------------------ */
+/*  Sort shortlist by a numeric field; null values placed last         */
+/* ------------------------------------------------------------------ */
+export function sortShortlist(
+  funds: ShortlistItem[],
+  sortField: ShortlistSortField | null,
+  sortDesc: boolean,
+): ShortlistItem[] {
+  if (sortField === null) return funds;
+
+  return [...funds].sort((a, b) => {
+    const aVal = a[sortField];
+    const bVal = b[sortField];
+
+    // Nulls always last regardless of sort direction
+    if (aVal === null || aVal === undefined) return 1;
+    if (bVal === null || bVal === undefined) return -1;
+
+    const diff = aVal - bVal;
+    return sortDesc ? -diff : diff;
+  });
+}
+
+/* ------------------------------------------------------------------ */
 /*  Group funds by category, sorted alphabetically;                    */
-/*  within each group, sorted by QFS descending                        */
+/*  within each group, preserve the incoming order (caller controls    */
+/*  sort before calling this)                                          */
 /* ------------------------------------------------------------------ */
 export function groupByCategory(funds: ShortlistItem[]): CategoryGroup[] {
   const map = new Map<string, ShortlistItem[]>();
@@ -62,7 +130,9 @@ export function groupByCategory(funds: ShortlistItem[]): CategoryGroup[] {
   );
   for (const key of sortedKeys) {
     const catFunds = map.get(key)!;
-    catFunds.sort((a, b) => (b.qfs_score ?? 0) - (a.qfs_score ?? 0));
+    // Only apply default QFS sort when no explicit sort is active;
+    // the caller should sort before grouping if a sort field is set.
+    // We keep original order here to respect pre-applied sorting.
     groups.push({ category: key, funds: catFunds });
   }
   return groups;

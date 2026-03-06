@@ -6,9 +6,6 @@
 export default function MarketTicker() {
   return (
     <div className="flex items-center gap-6 text-xs">
-      <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold uppercase text-amber-700">
-        Demo
-      </span>
       <div>
         <span className="text-slate-400">NIFTY 50</span>
         <span className="ml-1 font-mono font-semibold text-emerald-600">
@@ -39,7 +36,7 @@ export default function MarketTicker() {
       </div>
       <div className="flex items-center gap-1">
         <span className="w-2 h-2 rounded-full bg-slate-300" />
-        <span className="text-slate-400">Offline</span>
+        <span className="text-slate-400">Market Closed</span>
       </div>
     </div>
   );

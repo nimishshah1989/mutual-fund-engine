@@ -119,10 +119,10 @@ export default function FSASScoreCard({ fsas }: FSASScoreCardProps) {
       ) : (
         <div className="text-center py-8">
           <p className="text-sm text-slate-400">
-            FSAS not computed for this fund
+            Sector alignment not computed for this fund
           </p>
           <p className="text-xs text-slate-400 mt-1">
-            Only shortlisted funds receive FSAS scoring
+            Only shortlisted funds receive sector alignment scoring
           </p>
         </div>
       )}

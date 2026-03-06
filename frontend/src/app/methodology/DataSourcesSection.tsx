@@ -19,7 +19,7 @@ export default function DataSourcesSection() {
         />
         <DataSourceCard
           title="Portfolio Holdings"
-          description="Fund portfolio composition from Morningstar Global Stock Sector Breakdown API, showing sector-wise allocation percentages across 11 sectors. Used for FSAS alignment scoring on shortlisted funds only."
+          description="Fund portfolio composition from Morningstar Global Stock Sector Breakdown API, showing sector-wise allocation percentages across 11 sectors. Used for sector alignment scoring on shortlisted funds only."
         />
       </div>
     </div>

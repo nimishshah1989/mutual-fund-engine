@@ -10,9 +10,8 @@ export default function TierActionSection() {
         Step 4: Tier &amp; Action Assignment
       </h3>
       <p className="text-sm text-slate-500 mb-4">
-        Tiers are assigned based on QFS percentile rank within each fund&apos;s
-        SEBI category. Actions are determined by tier, then optionally refined
-        by FSAS for shortlisted funds.
+        Tiers are assigned based on Fund Score percentile rank within each
+        fund&apos;s SEBI category. Each tier maps directly to one action.
       </p>
 
       {/* Formula callout */}
@@ -21,11 +20,11 @@ export default function TierActionSection() {
           Tier Assignment Rule
         </p>
         <p className="text-center text-lg font-mono font-semibold text-slate-800">
-          Tier = f(QFS Percentile Rank within SEBI Category)
+          Tier = f(Fund Score Percentile Rank within SEBI Category)
         </p>
         <p className="text-center text-xs text-slate-400 mt-2">
-          No blended score. QFS filters first, FSAS refines the action for
-          shortlisted funds.
+          Each tier maps directly to one action. Sector Alignment Score provides
+          context but does not modify the action.
         </p>
       </div>
 
@@ -79,60 +78,17 @@ export default function TierActionSection() {
         </table>
       </div>
 
-      {/* FSAS Action Refinement */}
-      <FSASRefinement />
-    </div>
-  );
-}
-
-function FSASRefinement() {
-  return (
-    <>
-      <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mt-6 mb-2">
-        FSAS Action Refinement (Shortlisted Funds Only)
-      </p>
-      <p className="text-sm text-slate-600 mb-3">
-        For shortlisted funds, the FSAS score can refine the action within the
-        fund&apos;s tier:
-      </p>
-      <div className="space-y-2 text-sm text-slate-600">
-        <div className="flex items-start gap-3 bg-emerald-50 rounded-lg p-3 border border-emerald-100">
-          <span className="text-xs font-bold text-emerald-700 bg-emerald-200 rounded px-2 py-0.5 flex-shrink-0">
-            UPGRADE
-          </span>
-          <p>
-            QUALITY tier + FSAS &ge; 75 &rarr; action upgraded from SIP to{" "}
-            <span className="font-semibold">BUY</span>
-          </p>
-        </div>
-        <div className="flex items-start gap-3 bg-blue-50 rounded-lg p-3 border border-blue-100">
-          <span className="text-xs font-bold text-blue-700 bg-blue-200 rounded px-2 py-0.5 flex-shrink-0">
-            UPGRADE
-          </span>
-          <p>
-            WATCH tier + FSAS &ge; 70 &rarr; action upgraded from HOLD to{" "}
-            <span className="font-semibold">HOLD+</span>
-          </p>
-        </div>
-        <div className="flex items-start gap-3 bg-amber-50 rounded-lg p-3 border border-amber-100">
-          <span className="text-xs font-bold text-amber-700 bg-amber-200 rounded px-2 py-0.5 flex-shrink-0">
-            DOWNGRADE
-          </span>
-          <p>
-            CORE tier + FSAS &lt; 30 &rarr; action downgraded from BUY to{" "}
-            <span className="font-semibold">SIP</span>
-          </p>
-        </div>
-        <div className="flex items-start gap-3 bg-red-50 rounded-lg p-3 border border-red-100">
-          <span className="text-xs font-bold text-red-700 bg-red-200 rounded px-2 py-0.5 flex-shrink-0">
-            CAP
-          </span>
-          <p>
-            AVOID exposure &gt; 15% &rarr; action capped at{" "}
-            <span className="font-semibold">HOLD</span> regardless of tier
-          </p>
-        </div>
+      {/* Sector Alignment context note */}
+      <div className="mt-5 bg-blue-50 border border-blue-200 rounded-lg p-4">
+        <p className="text-sm font-semibold text-blue-800">
+          Role of Sector Alignment Score
+        </p>
+        <p className="text-sm text-blue-700 mt-1">
+          The Sector Alignment Score is computed for shortlisted funds and
+          displayed for context, but it does not modify the action. Actions are
+          determined purely by tier classification.
+        </p>
       </div>
-    </>
+    </div>
   );
 }

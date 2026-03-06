@@ -14,9 +14,8 @@ export default function MethodologyPage() {
   return (
     <div>
       <PageHeader
-        emoji="📖"
         title="Scoring Methodology"
-        subtitle="How the MF Recommendation Engine evaluates and ranks mutual funds"
+        subtitle="How the Recommendation Engine evaluates and ranks mutual funds"
       />
 
       <OverviewSection />

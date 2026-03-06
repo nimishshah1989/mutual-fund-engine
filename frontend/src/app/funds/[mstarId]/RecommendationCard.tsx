@@ -30,7 +30,7 @@ export default function RecommendationCard({
           {/* Key metrics */}
           <div className="space-y-3">
             <div className="flex items-center justify-between">
-              <span className="text-sm text-slate-600">QFS Rank</span>
+              <span className="text-sm text-slate-600">Score Rank</span>
               <span className="text-sm font-mono font-semibold text-slate-800">
                 #{rec.qfs_rank}
               </span>
@@ -57,7 +57,7 @@ export default function RecommendationCard({
             </div>
             {rec.fsas != null && (
               <div className="flex items-center justify-between">
-                <span className="text-sm text-slate-600">FSAS</span>
+                <span className="text-sm text-slate-600">Sector Alignment</span>
                 <span className="text-sm font-mono font-semibold text-teal-600">
                   {formatScore(rec.fsas)}
                 </span>

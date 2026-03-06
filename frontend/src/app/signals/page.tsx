@@ -213,7 +213,7 @@ export default function SignalsPage() {
     return (
       <div>
         <PageHeader
-          emoji="📈"
+
           title="FM Sector Signals"
           subtitle="Manage sector views — bulk edit all sectors at once"
         />
@@ -230,7 +230,7 @@ export default function SignalsPage() {
     return (
       <div>
         <PageHeader
-          emoji="📈"
+
           title="FM Sector Signals"
           subtitle="Manage sector views — bulk edit all sectors at once"
         />
@@ -246,7 +246,6 @@ export default function SignalsPage() {
   return (
     <div>
       <PageHeader
-        emoji="📈"
         title="FM Sector Signals"
         subtitle="Manage sector views — bulk edit all sectors at once"
       />

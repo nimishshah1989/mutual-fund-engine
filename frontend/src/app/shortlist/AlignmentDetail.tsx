@@ -2,6 +2,7 @@
 
 import type { AlignmentSummary, SectorAlignmentEntry } from "@/types/api";
 import SignalBadge from "@/components/SignalBadge";
+import { sectorBgColor } from "@/lib/colors";
 
 /* ------------------------------------------------------------------ */
 /*  Props                                                              */
@@ -54,7 +55,10 @@ function SectorTable({
         {entries.map((entry) => (
           <tr key={entry.sector} className="border-b border-slate-100">
             <td className="px-3 py-2 text-sm text-slate-700">
-              {entry.sector}
+              <span className="inline-flex items-center gap-1.5">
+                <span className={`w-2 h-2 rounded-full flex-shrink-0 ${sectorBgColor(entry.sector)}`} />
+                {entry.sector}
+              </span>
             </td>
             <td className="px-3 py-2 text-center">
               <SignalBadge signal={entry.signal} />

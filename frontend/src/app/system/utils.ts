@@ -5,7 +5,7 @@
 export type LayerValue = "qfs" | "fsas" | "all";
 
 export const LAYER_OPTIONS: { value: LayerValue; label: string }[] = [
-  { value: "all", label: "Full Pipeline (QFS \u2192 Shortlist \u2192 FSAS \u2192 Recommend)" },
+  { value: "all", label: "Full Pipeline (Score \u2192 Shortlist \u2192 Alignment \u2192 Recommend)" },
   { value: "qfs", label: "Layer 1 \u2014 Quantitative Fund Score" },
   { value: "fsas", label: "Layer 2 \u2014 Sector Alignment Score (Shortlisted Only)" },
 ];

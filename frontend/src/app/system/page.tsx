@@ -65,7 +65,7 @@ export default function SystemPage() {
     return (
       <div>
         <PageHeader
-          emoji="&#x2699;&#xFE0F;"
+
           title="System"
           subtitle="Administration & monitoring"
         />
@@ -81,7 +81,7 @@ export default function SystemPage() {
     return (
       <div>
         <PageHeader
-          emoji="&#x2699;&#xFE0F;"
+
           title="System"
           subtitle="Administration & monitoring"
         />
@@ -93,7 +93,6 @@ export default function SystemPage() {
   return (
     <div>
       <PageHeader
-        emoji="&#x2699;&#xFE0F;"
         title="System"
         subtitle="Administration & monitoring"
       />

@@ -9,9 +9,7 @@ export interface TierCount {
 
 export interface TierActionRow {
   tier: string;
-  buy: number;
-  sip: number;
-  hold_plus: number;
+  accumulate: number;
   hold: number;
   reduce: number;
   exit: number;

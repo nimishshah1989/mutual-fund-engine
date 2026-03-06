@@ -4,9 +4,12 @@ services/scoring_pipeline.py
 Full pipeline orchestrator and recommendation assignment.
 
 Handles:
-  - assign_recommendations: Tier/action assignment based on QFS percentile
+  - assign_recommendations: Tier/action assignment based on QFS percentile (4 actions: ACCUMULATE, HOLD, REDUCE, EXIT)
   - compute_full_pipeline: QFS -> shortlist -> FSAS -> recommend
   - compute_full_pipeline_all_categories: Pipeline for all categories
+
+Note: FSAS no longer refines actions. Actions map directly from tier.
+FSAS is still computed and displayed for sector alignment context.
 """
 
 from __future__ import annotations
@@ -147,10 +150,8 @@ class ScoringPipeline:
         fsas_value = fsas_lookup.get(mstar_id) if is_shortlisted else None
         avoid_pct = avoid_lookup.get(mstar_id, 0.0)
 
-        if is_shortlisted and fsas_value is not None:
-            action = tier_engine.refine_action_with_fsas(
-                tier=tier, base_action=action, fsas=fsas_value, avoid_exposure_pct=avoid_pct,
-            )
+        # Actions are now determined directly by tier (no FSAS refinement).
+        # FSAS data is still computed and displayed for sector alignment context.
 
         metadata = fund_metadata.get(mstar_id, {})
         override_fund_data: dict[str, Any] = {
