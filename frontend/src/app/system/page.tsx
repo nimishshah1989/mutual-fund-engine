@@ -20,6 +20,7 @@ import DataFreshnessCard from "./DataFreshnessCard";
 import ScheduledJobsCard from "./ScheduledJobsCard";
 import ManualIngestionCard from "./ManualIngestionCard";
 import ManualScoreComputeCard from "./ManualScoreComputeCard";
+import ManualPulseCard from "./ManualPulseCard";
 import IngestionLogsTable from "./IngestionLogsTable";
 
 export default function SystemPage() {
@@ -151,6 +152,11 @@ export default function SystemPage() {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
         <ManualIngestionCard onIngestionComplete={fetchData} />
         <ManualScoreComputeCard onComputeComplete={fetchData} />
+      </div>
+
+      {/* Pulse operations */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+        <ManualPulseCard onComplete={fetchData} />
       </div>
 
       {/* Ingestion logs */}
