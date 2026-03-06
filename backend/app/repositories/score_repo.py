@@ -152,6 +152,14 @@ class ScoreRepository:
     ) -> list[FundRecommendation]:
         return await self.recommendation.get_latest_shortlisted_recommendations()
 
+    async def get_matrix_summary(self) -> list[dict]:
+        return await self.recommendation.get_matrix_summary()
+
+    async def get_funds_by_matrix_position(
+        self, position: str,
+    ) -> list[FundRecommendation]:
+        return await self.recommendation.get_funds_by_matrix_position(position)
+
     # ===================================================================
     # Audit log delegate
     # ===================================================================

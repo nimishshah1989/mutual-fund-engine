@@ -7,6 +7,8 @@ export type {
   FundScoreOverview, FundScoreDetail, QFSDetail, MetricValue,
   FSASDetail, SectorContribution, RecommendationDetail,
   ShortlistItem, AlignmentSummary, SectorAlignmentEntry,
+  MatrixCellSummary, MatrixSummaryResponse,
+  BenchmarkWeightItem, BenchmarkWeightsResponse,
 } from "./api-scores";
 
 /** Standard envelope returned by most endpoints */
@@ -200,4 +202,16 @@ export interface ScoreComputeCategoryResult {
   tier_distribution: Record<string, number>;
   shortlisted_count?: number;
   error: string | null;
+}
+
+/* ---------- /api/v1/benchmarks ---------- */
+export interface BenchmarkRefreshResponse {
+  status: string;
+  benchmark_name?: string;
+  benchmark_mstar_id?: string;
+  sector_count: number;
+  total_weight_pct: number;
+  rows_upserted: number;
+  fetched_at?: string;
+  reason?: string;
 }

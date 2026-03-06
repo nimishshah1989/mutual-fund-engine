@@ -19,6 +19,7 @@ import SignalToolbar from "./SignalToolbar";
 import SignalTable from "./SignalTable";
 import SignalPreviewStrip from "./SignalPreviewStrip";
 import ChangeHistoryPanel from "./ChangeHistoryPanel";
+import BenchmarkWeightsCard from "./BenchmarkWeightsCard";
 
 /* ------------------------------------------------------------------ */
 /*  Page Component                                                     */
@@ -273,6 +274,17 @@ export default function SignalsPage() {
       <SignalPreviewStrip sectors={sectors} edits={edits} />
 
       <ChangeHistoryPanel refreshKey={historyRefreshKey} />
+
+      {/* -------------------------------------------------------------- */}
+      {/*  Benchmark Reference Data                                       */}
+      {/* -------------------------------------------------------------- */}
+
+      <div className="mt-6">
+        <h2 className="text-base font-semibold text-slate-800 flex items-center gap-2 mb-4">
+          <span>📊</span> Benchmark Reference Data
+        </h2>
+        <BenchmarkWeightsCard />
+      </div>
     </div>
   );
 }

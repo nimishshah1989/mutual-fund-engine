@@ -2,12 +2,10 @@
 models/db/fund_recommendation.py
 
 Fund Recommendation — the final output of the scoring pipeline.
-Replaces the old fund_crs table. No more blended CRS score.
 
-QFS and FSAS are displayed separately:
-- tier comes from QFS percentile rank within category
-- action comes from tier + FSAS alignment context
-- FSAS is only populated for shortlisted funds
+v3 (Decision Matrix): Two independent axes — QFS and FMS — scored for
+every fund. Their intersection on a 3x3 matrix determines action and tier.
+No shortlist concept. Both scores are always populated.
 """
 
 from __future__ import annotations
@@ -31,11 +29,11 @@ class FundRecommendation(Base):
     mstar_id: Mapped[str] = mapped_column(String(20), nullable=False)
     computed_date: Mapped[date] = mapped_column(Date, nullable=False)
 
-    # Scores — QFS always present, FSAS only for shortlisted funds
+    # Scores — both always present in v3 (Decision Matrix)
     qfs: Mapped[float] = mapped_column(Numeric(8, 4), nullable=False)
     fsas: Mapped[Optional[float]] = mapped_column(
         Numeric(8, 4), nullable=True,
-        comment="Only populated for shortlisted funds"
+        comment="FM Alignment Score (0-100). Nullable for backward compat."
     )
 
     # QFS ranking within category
@@ -45,11 +43,37 @@ class FundRecommendation(Base):
     )
     category_rank_pct: Mapped[float] = mapped_column(
         Numeric(5, 2), nullable=False,
-        comment="Percentile rank within category (0-100, 100 = best)"
+        comment="QFS percentile rank within category (0-100, 100 = best)"
     )
     is_shortlisted: Mapped[bool] = mapped_column(
         Boolean, default=False,
-        comment="True if fund was in top N for its category"
+        comment="Legacy — kept for backward compat. Always False in v3."
+    )
+
+    # v3 Decision Matrix fields
+    fm_score: Mapped[Optional[float]] = mapped_column(
+        Numeric(8, 4), nullable=True,
+        comment="FM Alignment Score (0-100) — alias for fsas in matrix context"
+    )
+    fm_score_percentile: Mapped[Optional[float]] = mapped_column(
+        Numeric(5, 2), nullable=True,
+        comment="FMS percentile rank within category (0-100, 100 = best)"
+    )
+    qfs_percentile: Mapped[Optional[float]] = mapped_column(
+        Numeric(5, 2), nullable=True,
+        comment="QFS percentile rank within category (alias of category_rank_pct)"
+    )
+    matrix_row: Mapped[Optional[str]] = mapped_column(
+        String(10), nullable=True,
+        comment="QFS band: HIGH / MID / LOW"
+    )
+    matrix_col: Mapped[Optional[str]] = mapped_column(
+        String(10), nullable=True,
+        comment="FMS band: HIGH / MID / LOW"
+    )
+    matrix_position: Mapped[Optional[str]] = mapped_column(
+        String(20), nullable=True,
+        comment="Combined: HIGH_HIGH, HIGH_MID, etc."
     )
 
     # Classification
@@ -58,8 +82,8 @@ class FundRecommendation(Base):
         comment="CORE / QUALITY / WATCH / CAUTION / EXIT — from QFS percentile"
     )
     action: Mapped[str] = mapped_column(
-        String(10), nullable=False,
-        comment="BUY / SIP / HOLD_PLUS / HOLD / REDUCE / EXIT"
+        String(20), nullable=False,
+        comment="ACCUMULATE / HOLD / REDUCE / EXIT — from decision matrix"
     )
 
     # Override tracking
@@ -84,4 +108,6 @@ class FundRecommendation(Base):
         Index("idx_recommendation_mstar_date", "mstar_id", computed_date.desc()),
         Index("idx_recommendation_tier", "tier", qfs.desc()),
         Index("idx_recommendation_shortlisted", "is_shortlisted", "tier"),
+        Index("idx_recommendation_matrix", "matrix_position", "computed_date"),
+        Index("idx_recommendation_action", "action", qfs.desc()),
     )

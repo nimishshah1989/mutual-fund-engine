@@ -51,7 +51,7 @@ export default function SectorContributionTable({
         <p className="text-sm text-slate-400 text-center py-8">
           {fsas
             ? "No sector contribution data available"
-            : "Sector alignment not computed \u2014 only shortlisted funds receive alignment scoring"}
+            : "Sector alignment not computed for this fund"}
         </p>
       ) : (
         <div className="overflow-x-auto">
@@ -62,19 +62,19 @@ export default function SectorContributionTable({
                   Sector
                 </th>
                 <th className="text-right px-4 py-3 text-xs font-semibold text-slate-400 uppercase tracking-wider">
-                  Exposure %
+                  Fund %
+                </th>
+                <th className="text-right px-4 py-3 text-xs font-semibold text-slate-400 uppercase tracking-wider">
+                  Benchmark %
+                </th>
+                <th className="text-right px-4 py-3 text-xs font-semibold text-slate-400 uppercase tracking-wider">
+                  Active Wt
                 </th>
                 <th className="text-center px-4 py-3 text-xs font-semibold text-slate-400 uppercase tracking-wider">
                   Signal
                 </th>
                 <th className="text-center px-4 py-3 text-xs font-semibold text-slate-400 uppercase tracking-wider">
                   Confidence
-                </th>
-                <th className="text-right px-4 py-3 text-xs font-semibold text-slate-400 uppercase tracking-wider">
-                  Signal Wt
-                </th>
-                <th className="text-right px-4 py-3 text-xs font-semibold text-slate-400 uppercase tracking-wider">
-                  Conf Multiplier
                 </th>
                 <th className="text-right px-4 py-3 text-xs font-semibold text-slate-400 uppercase tracking-wider">
                   Contribution
@@ -96,17 +96,29 @@ export default function SectorContributionTable({
                   <td className="px-4 py-3 text-right text-sm font-mono text-slate-700">
                     {sc.exposure_pct.toFixed(1)}%
                   </td>
+                  <td className="px-4 py-3 text-right text-sm font-mono text-slate-700">
+                    {sc.benchmark_weight_pct != null
+                      ? `${sc.benchmark_weight_pct.toFixed(1)}%`
+                      : "\u2014"}
+                  </td>
+                  <td
+                    className={`px-4 py-3 text-right text-sm font-mono font-semibold ${
+                      sc.active_weight != null
+                        ? sc.active_weight >= 0
+                          ? "text-emerald-600"
+                          : "text-red-600"
+                        : "text-slate-400"
+                    }`}
+                  >
+                    {sc.active_weight != null
+                      ? `${sc.active_weight > 0 ? "+" : ""}${sc.active_weight.toFixed(1)}%`
+                      : "\u2014"}
+                  </td>
                   <td className="px-4 py-3 text-center">
                     <SignalBadge signal={sc.signal} />
                   </td>
                   <td className="px-4 py-3 text-center">
                     <ConfidenceBadge confidence={sc.confidence} />
-                  </td>
-                  <td className="px-4 py-3 text-right text-sm font-mono text-slate-700">
-                    {sc.signal_weight.toFixed(2)}
-                  </td>
-                  <td className="px-4 py-3 text-right text-sm font-mono text-slate-700">
-                    {sc.confidence_multiplier.toFixed(1)}
                   </td>
                   <td
                     className={`px-4 py-3 text-right text-sm font-mono font-semibold ${

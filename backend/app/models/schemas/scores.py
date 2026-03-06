@@ -105,13 +105,15 @@ class ScoreDetail(BaseModel):
 # ---------------------------------------------------------------------------
 
 class SectorContributionDetail(BaseModel):
-    """Breakdown of one sector's contribution to the FSAS score."""
+    """Breakdown of one sector's contribution to the FMS score."""
     exposure_pct: float = Field(..., description="Fund's allocation to this sector (%)")
+    benchmark_weight_pct: float = Field(0.0, description="Benchmark allocation to this sector (%)")
+    active_weight: float = Field(0.0, description="Fund exposure - benchmark weight")
     signal: str = Field(..., description="FM signal for this sector")
     signal_weight: float = Field(..., description="Numeric weight of the signal")
     confidence: str = Field(..., description="FM confidence level")
     confidence_multiplier: float = Field(..., description="Numeric multiplier for confidence")
-    contribution: float = Field(..., description="Sector contribution to raw FSAS")
+    contribution: float = Field(..., description="Sector contribution to raw FMS")
 
 
 class FSASDetail(BaseModel):
@@ -138,20 +140,29 @@ class FSASDetail(BaseModel):
 # ---------------------------------------------------------------------------
 
 class RecommendationDetail(BaseModel):
-    """Fund recommendation detail — tier from QFS percentile, FSAS separate."""
+    """Fund recommendation detail — v3: tier/action from 3x3 decision matrix."""
     mstar_id: str
     computed_date: date
     qfs: float = Field(..., description="QFS score (0-100)")
-    fsas: Optional[float] = Field(None, description="FSAS score, only for shortlisted funds")
+    fsas: Optional[float] = Field(None, description="FM Alignment Score (0-100)")
     qfs_rank: int = Field(..., description="Rank within category (1 = best)")
-    category_rank_pct: float = Field(..., description="Percentile rank (0-100, 100 = best)")
-    is_shortlisted: bool = Field(False, description="Whether fund is in top N for category")
+    category_rank_pct: float = Field(..., description="QFS percentile rank (0-100, 100 = best)")
+    is_shortlisted: bool = Field(False, description="Legacy — always False in v3")
     tier: str = Field(..., description="CORE / QUALITY / WATCH / CAUTION / EXIT")
     action: str = Field(..., description="ACCUMULATE / HOLD / REDUCE / EXIT")
     override_applied: bool = Field(False, description="Whether a hard override was applied")
     override_reason: Optional[str] = Field(None, description="Human-readable override reason")
     original_tier: Optional[str] = Field(None, description="Tier before override")
     action_rationale: Optional[str] = Field(None, description="Auto-generated rationale text")
+
+    # v3 Decision Matrix fields
+    fm_score: Optional[float] = Field(None, description="FM Alignment Score (0-100)")
+    fm_score_percentile: Optional[float] = Field(None, description="FMS percentile in category")
+    qfs_percentile: Optional[float] = Field(None, description="QFS percentile in category")
+    matrix_row: Optional[str] = Field(None, description="QFS band: HIGH / MID / LOW")
+    matrix_col: Optional[str] = Field(None, description="FMS band: HIGH / MID / LOW")
+    matrix_position: Optional[str] = Field(None, description="e.g. HIGH_HIGH, MID_LOW")
+
     qfs_id: Optional[UUID] = None
     fsas_id: Optional[UUID] = None
     engine_version: Optional[str] = None
@@ -230,6 +241,12 @@ class ScoreOverviewItem(BaseModel):
     action: Optional[str] = Field(None, description="ACCUMULATE / HOLD / REDUCE / EXIT")
     qfs_rank: Optional[int] = Field(None, description="Rank within category")
     category_rank_pct: Optional[float] = Field(None, description="Percentile rank in category")
+
+    # v3 Decision Matrix fields
+    fm_score: Optional[float] = Field(None, description="FM Alignment Score (0-100)")
+    fm_score_percentile: Optional[float] = Field(None, description="FMS percentile in category")
+    qfs_percentile: Optional[float] = Field(None, description="QFS percentile in category")
+    matrix_position: Optional[str] = Field(None, description="e.g. HIGH_HIGH, MID_LOW")
 
     model_config = {"from_attributes": True}
 

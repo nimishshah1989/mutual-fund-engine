@@ -1,5 +1,4 @@
-// Step 2: Shortlist section. Explains how the top N funds per
-// SEBI category are selected after QFS scoring for FSAS evaluation.
+// DEPRECATED: Shortlist concept removed in v3 Decision Matrix. This file is no longer rendered.
 
 export default function ShortlistSection() {
   return (

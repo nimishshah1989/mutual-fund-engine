@@ -3,13 +3,12 @@ services/scoring_pipeline.py
 
 Full pipeline orchestrator and recommendation assignment.
 
-Handles:
-  - assign_recommendations: Tier/action assignment based on QFS percentile (4 actions: ACCUMULATE, HOLD, REDUCE, EXIT)
-  - compute_full_pipeline: QFS -> shortlist -> FSAS -> recommend
-  - compute_full_pipeline_all_categories: Pipeline for all categories
+v3 (Decision Matrix):
+    NEW: QFS (all) -> FMS (all) -> Percentiles -> Matrix Classification -> Overrides -> Action
+    OLD: QFS (all) -> Shortlist (top 5) -> FSAS (shortlisted) -> Tier by QFS pctl -> Action
 
-Note: FSAS no longer refines actions. Actions map directly from tier.
-FSAS is still computed and displayed for sector alignment context.
+The shortlist step is bypassed. FMS is computed for ALL funds.
+Tier and action come from the 3x3 matrix, not QFS percentile alone.
 """
 
 from __future__ import annotations
@@ -18,6 +17,8 @@ from datetime import date
 from typing import TYPE_CHECKING, Any, Optional
 
 import structlog
+
+from app.engines.matrix_engine import MatrixEngine
 
 if TYPE_CHECKING:
     from app.services.scoring_service import ScoringService
@@ -31,156 +32,227 @@ class ScoringPipeline:
     def __init__(self, service: ScoringService) -> None:
         self.service = service
 
-    async def assign_recommendations(
-        self, trigger_event: str = "manual_compute",
+    async def assign_matrix_recommendations(
+        self,
+        benchmark_weights: Optional[dict[str, float]] = None,
+        trigger_event: str = "manual_compute",
     ) -> dict[str, Any]:
         """
-        Assign tiers and actions based on QFS percentile rank within each category.
-        For shortlisted funds, refine actions with FSAS context.
+        v3: Assign tiers and actions based on 3x3 decision matrix.
+        Both QFS and FMS percentiles determine the recommendation.
         """
         today = date.today()
-        logger.info("recommendation_assignment_start", trigger=trigger_event)
+        logger.info("matrix_recommendation_start", trigger=trigger_event)
 
         svc = self.service
+        matrix_engine = svc.matrix_engine
+        tier_engine = svc.tier_engine
+
         categories = await svc.data_loader.get_eligible_categories()
         all_recommendations: list[dict[str, Any]] = []
-        tier_distribution: dict[str, int] = {}
+        action_distribution: dict[str, int] = {}
         override_count = 0
-        shortlisted_count = 0
-
-        shortlisted_mstar_ids = set(await svc.score_repo.get_shortlisted_mstar_ids())
 
         for category_name in categories:
             fund_ids = await svc.data_loader.load_eligible_fund_ids(category_name)
             if not fund_ids:
                 continue
 
+            # Load QFS scores for all funds in category
             qfs_records = await svc.score_repo.get_latest_qfs_by_mstar_ids(fund_ids)
             if not qfs_records:
                 continue
 
-            sorted_records = sorted(
+            # Load FMS scores for all funds in category
+            fsas_records = await svc.score_repo.get_latest_fsas_by_mstar_ids(fund_ids)
+            fsas_lookup: dict[str, float] = {}
+            avoid_lookup: dict[str, float] = {}
+            for f in fsas_records:
+                fsas_lookup[f.mstar_id] = float(f.fsas) if f.fsas is not None else 0.0
+                avoid_lookup[f.mstar_id] = (
+                    float(f.avoid_exposure_pct) if f.avoid_exposure_pct is not None else 0.0
+                )
+
+            # Sort by QFS descending for rank assignment
+            sorted_qfs = sorted(
                 qfs_records,
                 key=lambda r: float(r.qfs) if r.qfs is not None else 0.0,
                 reverse=True,
             )
-            total_in_category = len(sorted_records)
+            total_in_category = len(sorted_qfs)
 
-            shortlisted_in_cat = [
-                r.mstar_id for r in sorted_records if r.mstar_id in shortlisted_mstar_ids
-            ]
-            fsas_lookup: dict[str, float] = {}
-            avoid_lookup: dict[str, float] = {}
+            # Compute QFS percentiles
+            qfs_percentiles: dict[str, float] = {}
+            for rank, record in enumerate(sorted_qfs, start=1):
+                qfs_percentiles[record.mstar_id] = self._compute_percentile(
+                    rank, total_in_category
+                )
 
-            if shortlisted_in_cat:
-                fsas_records = await svc.score_repo.get_latest_fsas_by_mstar_ids(shortlisted_in_cat)
-                for f in fsas_records:
-                    fsas_lookup[f.mstar_id] = float(f.fsas) if f.fsas is not None else 0.0
-                    avoid_lookup[f.mstar_id] = (
-                        float(f.avoid_exposure_pct) if f.avoid_exposure_pct is not None else 0.0
-                    )
+            # Compute FMS percentiles
+            fms_percentiles = self._compute_fms_percentiles(
+                fund_ids, fsas_lookup
+            )
 
+            # Load fund metadata for overrides
             fund_metadata = await svc.data_loader.load_fund_metadata(fund_ids)
 
-            for rank, record in enumerate(sorted_records, start=1):
-                rec = self._build_recommendation(
-                    record=record, rank=rank, total_in_category=total_in_category,
-                    today=today, shortlisted_mstar_ids=shortlisted_mstar_ids,
-                    fsas_lookup=fsas_lookup, avoid_lookup=avoid_lookup,
-                    fund_metadata=fund_metadata,
+            for rank, record in enumerate(sorted_qfs, start=1):
+                mstar_id = record.mstar_id
+                qfs_value = float(record.qfs) if record.qfs is not None else 0.0
+                qfs_pctl = qfs_percentiles[mstar_id]
+                fms_pctl = fms_percentiles.get(mstar_id, 50.0)
+                fms_value = fsas_lookup.get(mstar_id)
+
+                # Matrix classification
+                classification = matrix_engine.classify(qfs_pctl, fms_pctl)
+
+                # Override checks
+                data_completeness = (
+                    float(record.data_completeness_pct)
+                    if record.data_completeness_pct is not None else 100.0
                 )
-                if rec["override_applied"]:
+                metadata = fund_metadata.get(mstar_id, {})
+                override_fund_data: dict[str, Any] = {
+                    "avoid_exposure_pct": avoid_lookup.get(mstar_id, 0.0),
+                    "inception_date": metadata.get("inception_date"),
+                    "data_completeness_pct": data_completeness,
+                    "reference_date": today,
+                }
+
+                matrix_tier = classification["tier"]
+                matrix_action = classification["action"]
+
+                final_tier, final_action, applied_override, override_reason, _flag = (
+                    tier_engine.apply_overrides(
+                        matrix_tier, matrix_action, override_fund_data,
+                    )
+                )
+
+                if applied_override:
                     override_count += 1
-                if rec["is_shortlisted"]:
-                    shortlisted_count += 1
+
+                rationale = tier_engine.generate_rationale(
+                    tier=final_tier, action=final_action, qfs=qfs_value,
+                    percentile=qfs_pctl, fsas=fms_value,
+                    override_reason=override_reason,
+                    matrix_position=classification["matrix_position"],
+                    fms_percentile=fms_pctl,
+                )
+
+                rec = {
+                    "mstar_id": mstar_id,
+                    "computed_date": today,
+                    "qfs": qfs_value,
+                    "fsas": fms_value,
+                    "qfs_rank": rank,
+                    "category_rank_pct": round(qfs_pctl, 2),
+                    "is_shortlisted": False,
+                    # v3 matrix fields
+                    "fm_score": fms_value,
+                    "fm_score_percentile": round(fms_pctl, 2),
+                    "qfs_percentile": round(qfs_pctl, 2),
+                    "matrix_row": classification["matrix_row"],
+                    "matrix_col": classification["matrix_col"],
+                    "matrix_position": classification["matrix_position"],
+                    # Classification
+                    "tier": final_tier,
+                    "action": final_action,
+                    "override_applied": applied_override,
+                    "override_reason": override_reason,
+                    "original_tier": matrix_tier if applied_override else None,
+                    "action_rationale": rationale,
+                    "qfs_id": record.id,
+                    "fsas_id": None,
+                    "engine_version": "3.0.0",
+                }
                 all_recommendations.append(rec)
-                tier_distribution[rec["tier"]] = tier_distribution.get(rec["tier"], 0) + 1
+                action_distribution[final_action] = action_distribution.get(final_action, 0) + 1
 
         if all_recommendations:
-            rows_affected = await svc.score_repo.bulk_upsert_recommendations(all_recommendations)
+            rows_affected = await svc.score_repo.bulk_upsert_recommendations(
+                all_recommendations
+            )
         else:
             rows_affected = 0
 
+        # Build tier distribution from action distribution
+        tier_distribution: dict[str, int] = {}
+        for rec in all_recommendations:
+            tier_distribution[rec["tier"]] = tier_distribution.get(rec["tier"], 0) + 1
+
         logger.info(
-            "recommendation_assignment_complete",
-            fund_count=len(all_recommendations), rows_upserted=rows_affected,
-            tier_distribution=tier_distribution, override_count=override_count,
-            shortlisted_count=shortlisted_count,
+            "matrix_recommendation_complete",
+            fund_count=len(all_recommendations),
+            rows_upserted=rows_affected,
+            action_distribution=action_distribution,
+            tier_distribution=tier_distribution,
+            override_count=override_count,
         )
+
         return {
-            "fund_count": len(all_recommendations), "rows_upserted": rows_affected,
-            "tier_distribution": tier_distribution, "override_count": override_count,
-            "shortlisted_count": shortlisted_count, "computed_date": str(today),
+            "fund_count": len(all_recommendations),
+            "rows_upserted": rows_affected,
+            "tier_distribution": tier_distribution,
+            "action_distribution": action_distribution,
+            "override_count": override_count,
+            "computed_date": str(today),
             "status": "completed",
         }
 
-    def _build_recommendation(
+    def _compute_percentile(self, rank: int, total: int) -> float:
+        """Compute percentile from rank and total. Compresses small categories."""
+        if total <= 1:
+            return 50.0
+        percentile = (total - rank) / (total - 1) * 100.0
+        # Compress to [20, 80] for tiny categories
+        if total < 5:
+            percentile = 20.0 + (percentile / 100.0) * 60.0
+        return percentile
+
+    def _compute_fms_percentiles(
         self,
-        record: Any,
-        rank: int,
-        total_in_category: int,
-        today: date,
-        shortlisted_mstar_ids: set[str],
-        fsas_lookup: dict[str, float],
-        avoid_lookup: dict[str, float],
-        fund_metadata: dict[str, dict[str, Any]],
+        fund_ids: list[str],
+        fms_lookup: dict[str, float],
+    ) -> dict[str, float]:
+        """Compute FMS percentile ranks within the fund set."""
+        # Build sorted list of (mstar_id, fms_value)
+        scored_funds = [
+            (mid, fms_lookup.get(mid, 0.0))
+            for mid in fund_ids
+            if mid in fms_lookup
+        ]
+        if not scored_funds:
+            return {mid: 50.0 for mid in fund_ids}
+
+        scored_funds.sort(key=lambda x: x[1], reverse=True)
+        total = len(scored_funds)
+
+        percentiles: dict[str, float] = {}
+        for rank, (mstar_id, _fms) in enumerate(scored_funds, start=1):
+            percentiles[mstar_id] = self._compute_percentile(rank, total)
+
+        # Funds without FMS get midpoint
+        for mid in fund_ids:
+            if mid not in percentiles:
+                percentiles[mid] = 50.0
+
+        return percentiles
+
+    # ===================================================================
+    # Legacy method — kept for backward compat but delegates to matrix
+    # ===================================================================
+
+    async def assign_recommendations(
+        self, trigger_event: str = "manual_compute",
     ) -> dict[str, Any]:
-        """Build a single recommendation dict for one fund."""
-        mstar_id = record.mstar_id
-        qfs_value = float(record.qfs) if record.qfs is not None else 0.0
-        data_completeness = (
-            float(record.data_completeness_pct)
-            if record.data_completeness_pct is not None else 100.0
+        """Legacy entry point — now delegates to assign_matrix_recommendations."""
+        return await self.assign_matrix_recommendations(
+            trigger_event=trigger_event,
         )
 
-        if total_in_category > 1:
-            percentile = (total_in_category - rank) / (total_in_category - 1) * 100.0
-            # Compress to [20, 80] for tiny categories — prevents CORE/EXIT from
-            # minimal peer differences when the sample size is unreliable
-            if total_in_category < 5:
-                percentile = 20.0 + (percentile / 100.0) * 60.0
-        else:
-            percentile = 50.0
-
-        tier_engine = self.service.tier_engine
-        tier = tier_engine.assign_tier_by_percentile(percentile)
-        action = tier_engine.assign_action(tier)
-
-        is_shortlisted = mstar_id in shortlisted_mstar_ids
-        fsas_value = fsas_lookup.get(mstar_id) if is_shortlisted else None
-        avoid_pct = avoid_lookup.get(mstar_id, 0.0)
-
-        # Actions are now determined directly by tier (no FSAS refinement).
-        # FSAS data is still computed and displayed for sector alignment context.
-
-        metadata = fund_metadata.get(mstar_id, {})
-        override_fund_data: dict[str, Any] = {
-            "avoid_exposure_pct": avoid_pct,
-            "inception_date": metadata.get("inception_date"),
-            "data_completeness_pct": data_completeness,
-            "reference_date": today,
-        }
-
-        final_tier, final_action, applied_override, override_reason, _flag = (
-            tier_engine.apply_overrides(tier, action, override_fund_data)
-        )
-        rationale = tier_engine.generate_rationale(
-            tier=final_tier, action=final_action, qfs=qfs_value, percentile=percentile,
-            fsas=fsas_value, override_reason=override_reason, is_shortlisted=is_shortlisted,
-        )
-
-        return {
-            "mstar_id": mstar_id, "computed_date": today,
-            "qfs": qfs_value, "fsas": fsas_value,
-            "qfs_rank": rank, "category_rank_pct": round(percentile, 2),
-            "is_shortlisted": is_shortlisted,
-            "tier": final_tier, "action": final_action,
-            "override_applied": applied_override, "override_reason": override_reason,
-            "original_tier": tier if applied_override else None,
-            "action_rationale": rationale,
-            "qfs_id": record.id, "fsas_id": None,
-            "engine_version": "2.0.0",
-        }
+    # ===================================================================
+    # Full pipeline
+    # ===================================================================
 
     async def compute_full_pipeline(
         self,
@@ -189,23 +261,28 @@ class ScoringPipeline:
         shortlist_n: int = 5,
     ) -> dict[str, Any]:
         """
-        Run the complete scoring pipeline:
-        1. QFS for all categories (or one specific category)
-        2. Generate shortlist (top N per category)
-        3. FSAS for shortlisted funds only
-        4. Assign tiers and actions for all funds
+        v3 pipeline: QFS (all) -> FMS (all) -> Matrix -> Overrides -> Action.
+
+        Shortlist generation is skipped. shortlist_n param kept for API compat
+        but is not used.
         """
-        logger.info("full_pipeline_start", category=category_name, trigger=trigger_event)
+        logger.info(
+            "full_pipeline_start",
+            category=category_name,
+            trigger=trigger_event,
+            pipeline_version="v3_matrix",
+        )
         svc = self.service
 
         pipeline_results: dict[str, Any] = {
             "category": category_name or "all",
             "trigger_event": trigger_event,
             "computed_date": str(date.today()),
+            "pipeline_version": "v3_matrix",
             "layers": {},
         }
 
-        # Layer 1: QFS
+        # Layer 1: QFS for all funds
         try:
             if category_name:
                 qfs_summary = await svc.compute_qfs_for_category(
@@ -223,34 +300,38 @@ class ScoringPipeline:
             pipeline_results["status"] = "partial_failure"
             return pipeline_results
 
-        # Layer 2a: Generate shortlist
+        # Auto-refresh benchmark weights if stale
+        benchmark_weights = await svc.ensure_benchmark_weights()
+
+        # Layer 2: FMS for ALL funds (no shortlist)
         try:
-            shortlist_summary = await svc.generate_shortlist(
-                shortlist_n=shortlist_n, trigger_event=trigger_event,
+            if benchmark_weights:
+                fms_summary = await svc.compute_fms_for_all_funds(
+                    benchmark_weights=benchmark_weights,
+                    trigger_event=trigger_event,
+                )
+            else:
+                fms_summary = await svc.compute_fms_for_all_funds(
+                    trigger_event=trigger_event,
+                )
+            pipeline_results["layers"]["fms"] = fms_summary
+        except Exception as exc:
+            logger.error("pipeline_fms_failed", error=str(exc))
+            pipeline_results["layers"]["fms"] = {"status": "error", "error": str(exc)}
+            # FMS failure is non-fatal — matrix will use midpoint FMS
+
+        # Layer 3: Matrix classification + overrides
+        try:
+            rec_summary = await self.assign_matrix_recommendations(
+                benchmark_weights=benchmark_weights,
+                trigger_event=trigger_event,
             )
-            pipeline_results["layers"]["shortlist"] = shortlist_summary
-        except Exception as exc:
-            logger.error("pipeline_shortlist_failed", error=str(exc))
-            pipeline_results["layers"]["shortlist"] = {"status": "error", "error": str(exc)}
-            pipeline_results["status"] = "partial_failure"
-            return pipeline_results
-
-        # Layer 2b: FSAS for shortlisted funds
-        try:
-            fsas_summary = await svc.compute_fsas_for_shortlisted(trigger_event=trigger_event)
-            pipeline_results["layers"]["fsas"] = fsas_summary
-        except Exception as exc:
-            logger.error("pipeline_fsas_failed", error=str(exc))
-            pipeline_results["layers"]["fsas"] = {"status": "error", "error": str(exc)}
-            # FSAS failure is non-fatal — recommendations still work via QFS percentile alone
-
-        # Layer 3: Assign tiers and actions
-        try:
-            rec_summary = await self.assign_recommendations(trigger_event=trigger_event)
             pipeline_results["layers"]["recommendation"] = rec_summary
         except Exception as exc:
             logger.error("pipeline_recommendation_failed", error=str(exc))
-            pipeline_results["layers"]["recommendation"] = {"status": "error", "error": str(exc)}
+            pipeline_results["layers"]["recommendation"] = {
+                "status": "error", "error": str(exc),
+            }
             pipeline_results["status"] = "partial_failure"
             return pipeline_results
 
@@ -258,11 +339,12 @@ class ScoringPipeline:
         pipeline_results["status"] = "completed"
         pipeline_results["fund_count"] = total_funds
         pipeline_results["tier_distribution"] = rec_summary.get("tier_distribution", {})
-        pipeline_results["shortlisted_count"] = rec_summary.get("shortlisted_count", 0)
+        pipeline_results["action_distribution"] = rec_summary.get("action_distribution", {})
 
         logger.info(
             "full_pipeline_complete",
-            fund_count=total_funds, shortlisted=rec_summary.get("shortlisted_count", 0),
+            fund_count=total_funds,
+            pipeline_version="v3_matrix",
         )
         return pipeline_results
 

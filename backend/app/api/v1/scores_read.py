@@ -24,6 +24,7 @@ from app.core.exceptions import AppException, NotFoundError
 from app.engines.fsas_engine import FSASEngine
 from app.models.db.fund_master import FundMaster
 from app.models.schemas.common import ApiResponse, PaginatedResponse
+from app.models.schemas.benchmarks import MatrixCellSummary, MatrixSummaryResponse
 from app.models.schemas.scores import (
     FSASDetail,
     FundScoreDetail,
@@ -118,6 +119,11 @@ async def list_scores(
                 item_data["action"] = rec.action
                 item_data["qfs_rank"] = rec.qfs_rank
                 item_data["category_rank_pct"] = _safe_float(rec.category_rank_pct)
+                # v3 matrix fields
+                item_data["fm_score"] = _safe_float(rec.fm_score)
+                item_data["fm_score_percentile"] = _safe_float(rec.fm_score_percentile)
+                item_data["qfs_percentile"] = _safe_float(rec.qfs_percentile)
+                item_data["matrix_position"] = rec.matrix_position
 
             items.append(ScoreOverviewItem(**item_data))
 
@@ -192,6 +198,85 @@ async def list_shortlist(
         logger.error("shortlist_failed", error=str(exc))
         raise AppException(message="Failed to retrieve shortlist", error_code="SHORTLIST_ERROR")
 
+
+# ---------------------------------------------------------------------------
+# Decision Matrix endpoints (v3) — MUST be registered before /{mstar_id}
+# to avoid FastAPI treating "matrix" as a mstar_id path parameter.
+# ---------------------------------------------------------------------------
+
+@router.get(
+    "/matrix",
+    response_model=ApiResponse[MatrixSummaryResponse],
+    summary="Get 3x3 decision matrix summary",
+)
+@limiter.limit(RATE_READ)
+async def get_matrix_summary(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+) -> ApiResponse[MatrixSummaryResponse]:
+    """Return fund counts and averages for each cell in the 3x3 decision matrix."""
+    try:
+        score_repo = ScoreRepository(db)
+        raw_cells = await score_repo.get_matrix_summary()
+
+        cells = [MatrixCellSummary(**c) for c in raw_cells]
+        total_funds = sum(c.fund_count for c in cells)
+
+        return ApiResponse.ok(
+            data=MatrixSummaryResponse(
+                cells=cells,
+                total_funds=total_funds,
+            )
+        )
+    except Exception as exc:
+        logger.error("matrix_summary_failed", error=str(exc))
+        raise AppException(
+            message="Failed to retrieve matrix summary",
+            error_code="MATRIX_SUMMARY_ERROR",
+        )
+
+
+@router.get(
+    "/matrix/{position}",
+    response_model=ApiResponse[list[RecommendationDetail]],
+    summary="Get funds in a specific matrix cell",
+)
+@limiter.limit(RATE_READ)
+async def get_matrix_cell_funds(
+    request: Request,
+    position: str,
+    db: AsyncSession = Depends(get_db),
+) -> ApiResponse[list[RecommendationDetail]]:
+    """Return all funds in a specific matrix position (e.g. HIGH_HIGH, MID_LOW)."""
+    try:
+        from app.engines.matrix_engine import MatrixEngine
+
+        valid_positions = MatrixEngine.get_all_positions()
+        if position not in valid_positions:
+            raise AppException(
+                message=f"Invalid matrix position: {position}. Valid: {valid_positions}",
+                error_code="INVALID_MATRIX_POSITION",
+            )
+
+        score_repo = ScoreRepository(db)
+        records = await score_repo.get_funds_by_matrix_position(position)
+
+        items = [RecommendationDetail.model_validate(r) for r in records]
+        return ApiResponse.ok(data=items)
+
+    except AppException:
+        raise
+    except Exception as exc:
+        logger.error("matrix_cell_failed", position=position, error=str(exc))
+        raise AppException(
+            message="Failed to retrieve matrix cell funds",
+            error_code="MATRIX_CELL_ERROR",
+        )
+
+
+# ---------------------------------------------------------------------------
+# Single fund detail — MUST be last (catch-all path parameter)
+# ---------------------------------------------------------------------------
 
 @router.get(
     "/{mstar_id}",

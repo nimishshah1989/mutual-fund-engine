@@ -8,6 +8,8 @@ error detail structure, and domain-specific enums.
 Every API endpoint returns an ApiResponse[T] — no raw dicts, no ad-hoc shapes.
 """
 
+from __future__ import annotations
+
 import enum
 import math
 from typing import Any, Generic, TypeVar
@@ -31,10 +33,8 @@ class TierEnum(str, enum.Enum):
 
 
 class ActionEnum(str, enum.Enum):
-    """Recommended action for a fund position."""
-    BUY = "BUY"
-    SIP = "SIP"
-    HOLD_PLUS = "HOLD_PLUS"
+    """Recommended action for a fund position (v3 Decision Matrix)."""
+    ACCUMULATE = "ACCUMULATE"
     HOLD = "HOLD"
     REDUCE = "REDUCE"
     EXIT = "EXIT"

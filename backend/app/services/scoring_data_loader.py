@@ -18,6 +18,7 @@ import structlog
 from sqlalchemy import func as sa_func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.models.db.engine_config import EngineConfig
 from app.models.db.fund_master import FundMaster
 from app.models.db.fund_performance import FundPerformance
 from app.models.db.fund_risk_stats import FundRiskStats
@@ -207,6 +208,27 @@ class ScoringDataLoader:
         for rec in records:
             old_values[rec.mstar_id] = float(rec.fsas) if rec.fsas is not None else None
         return old_values
+
+    async def load_engine_config(self, config_key: str) -> Optional[dict]:
+        """Load a single engine_config value by key. Returns the JSONB value dict or None."""
+        result = await self.session.execute(
+            select(EngineConfig.config_value)
+            .where(EngineConfig.config_key == config_key)
+        )
+        row = result.scalar_one_or_none()
+        return row if row is not None else None
+
+    async def load_all_eligible_fund_ids(self) -> dict[str, list[str]]:
+        """Load all eligible fund IDs grouped by category. Used for full pipeline."""
+        result = await self.session.execute(
+            select(FundMaster.mstar_id, FundMaster.category_name)
+            .where(FundMaster.is_eligible.is_(True), FundMaster.deleted_at.is_(None))
+            .order_by(FundMaster.category_name)
+        )
+        grouped: dict[str, list[str]] = {}
+        for row in result.all():
+            grouped.setdefault(row.category_name, []).append(row.mstar_id)
+        return grouped
 
     async def create_audit_logs(
         self,

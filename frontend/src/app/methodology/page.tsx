@@ -3,7 +3,6 @@
 import PageHeader from "@/components/PageHeader";
 import OverviewSection from "./OverviewSection";
 import QFSScoringSection from "./QFSScoringSection";
-import ShortlistSection from "./ShortlistSection";
 import FSASSection from "./FSASSection";
 import TierActionSection from "./TierActionSection";
 import ActionReferenceSection from "./ActionReferenceSection";
@@ -20,11 +19,10 @@ export default function MethodologyPage() {
 
       <OverviewSection />
       <QFSScoringSection />
-      <ShortlistSection />
       <FSASSection />
       <TierActionSection />
-      <ActionReferenceSection />
       <HardOverridesSection />
+      <ActionReferenceSection />
       <DataSourcesSection />
     </div>
   );

@@ -207,31 +207,58 @@ class TierEngine:
         self, tier: str, action: str, qfs: float, percentile: float,
         fsas: Optional[float], override_reason: Optional[str],
         is_shortlisted: bool = False,
+        matrix_position: Optional[str] = None,
+        fms_percentile: Optional[float] = None,
     ) -> str:
         """Generate a human-readable rationale for the tier/action assignment."""
         parts: list[str] = []
 
-        parts.append(
-            f"Fund Score {qfs:.1f} (percentile {percentile:.0f}th in category)"
-        )
-        parts.append(f"assigns to {tier} tier with {action} recommendation.")
+        # v3 Decision Matrix rationale
+        if matrix_position is not None and fms_percentile is not None:
+            parts.append(
+                f"QFS {qfs:.1f} ({percentile:.0f}th pctl) + "
+                f"FM Alignment ({fms_percentile:.0f}th pctl)"
+            )
+            parts.append(f"places fund in {matrix_position} cell →")
+            parts.append(f"{tier} tier, {action} recommendation.")
 
-        if is_shortlisted and fsas is not None:
-            if fsas >= 70:
-                parts.append(
-                    f"Strong sector alignment ({fsas:.1f}) supports conviction."
-                )
-            elif fsas >= 40:
-                parts.append(
-                    f"Moderate sector alignment ({fsas:.1f})."
-                )
-            else:
-                parts.append(
-                    f"Weak sector alignment ({fsas:.1f}) — "
-                    "misaligned with current FM sector views."
-                )
-        elif not is_shortlisted:
-            parts.append("Not shortlisted — sector alignment not computed.")
+            if fsas is not None:
+                if fsas >= 70:
+                    parts.append(
+                        f"Strong FM alignment ({fsas:.1f}) supports conviction."
+                    )
+                elif fsas >= 40:
+                    parts.append(
+                        f"Moderate FM alignment ({fsas:.1f})."
+                    )
+                else:
+                    parts.append(
+                        f"Weak FM alignment ({fsas:.1f}) — "
+                        "misaligned with current FM sector views."
+                    )
+        else:
+            # Legacy v2 rationale (no matrix data)
+            parts.append(
+                f"Fund Score {qfs:.1f} (percentile {percentile:.0f}th in category)"
+            )
+            parts.append(f"assigns to {tier} tier with {action} recommendation.")
+
+            if is_shortlisted and fsas is not None:
+                if fsas >= 70:
+                    parts.append(
+                        f"Strong sector alignment ({fsas:.1f}) supports conviction."
+                    )
+                elif fsas >= 40:
+                    parts.append(
+                        f"Moderate sector alignment ({fsas:.1f})."
+                    )
+                else:
+                    parts.append(
+                        f"Weak sector alignment ({fsas:.1f}) — "
+                        "misaligned with current FM sector views."
+                    )
+            elif not is_shortlisted:
+                parts.append("Not shortlisted — sector alignment not computed.")
 
         if override_reason:
             parts.append(f"Override applied: {override_reason}.")

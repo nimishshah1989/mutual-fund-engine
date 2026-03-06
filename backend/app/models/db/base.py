@@ -27,3 +27,4 @@ from app.models.db.engine_config import EngineConfig  # noqa: F401
 from app.models.db.alert_events import AlertEvent  # noqa: F401
 from app.models.db.ingestion_log import IngestionLog  # noqa: F401
 from app.models.db.score_audit_log import ScoreAuditLog  # noqa: F401
+from app.models.db.benchmark_sector_weights import BenchmarkSectorWeight  # noqa: F401

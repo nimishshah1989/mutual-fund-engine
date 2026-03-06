@@ -1,21 +1,21 @@
 """
 engines/fsas_engine.py
 
-FM Sector Alignment Score (FSAS) — Layer 2 of the JIP Recommendation Engine.
+FM Sector Alignment Score (FMS) — Layer 2 of the JIP Recommendation Engine.
 
-Computes a forward-looking score based on how well a fund's sector allocation
-aligns with the Fund Manager's active sector signals. Sectors the FM is
-bullish on (OVERWEIGHT, ACCUMULATE) boost the score; sectors marked AVOID
-or UNDERWEIGHT drag it down.
+v2.0.0 (Decision Matrix): Computes alignment using ACTIVE WEIGHTS relative
+to a benchmark (NIFTY 50), not raw exposure percentages.
 
 Algorithm:
-    1. For each fund, iterate over its sector exposures
-    2. Look up the FM signal for that sector
-    3. contribution = exposure_pct * signal_weight * confidence_multiplier
-    4. raw_fsas = sum of all sector contributions
-    5. Track avoid_exposure_pct = total exposure in AVOID sectors
-    6. Track stale_holdings_flag = holdings older than STALE_HOLDINGS_DAYS
-    7. Normalize raw_fsas across all funds in the batch to 0-100
+    For each fund, for each of 11 Morningstar sectors:
+        active_weight = fund_exposure_pct - benchmark_weight_pct
+        contribution = active_weight * signal_weight * confidence_multiplier
+    raw_fms = sum(all 11 sector contributions)
+    fms = min_max_normalise(raw_fms, within_category) -> 0-100
+
+A fund overweight in sectors the FM favors scores well.
+A fund overweight in sectors the FM avoids is penalised.
+Benchmark-aligned positions with neutral signals are near-zero.
 
 The engine is a pure computation module — it receives data, returns results.
 All DB I/O is handled by the scoring_service orchestrator.
@@ -32,14 +32,14 @@ from app.engines.base_engine import min_max_normalise
 
 logger = structlog.get_logger(__name__)
 
-# Current engine version — bump when algorithm changes
-ENGINE_VERSION = "1.0.0"
+# Bump: active weight formula replaces raw exposure formula
+ENGINE_VERSION = "2.0.0"
 
 
 class FSASEngine:
     """Computes FM Sector Alignment Score for all funds in a batch."""
 
-    # Signal → numeric weight (how the FM views the sector)
+    # Signal -> numeric weight (how the FM views the sector)
     SIGNAL_WEIGHTS: dict[str, float] = {
         "OVERWEIGHT": 1.0,
         "ACCUMULATE": 0.6,
@@ -48,7 +48,7 @@ class FSASEngine:
         "AVOID": -1.0,
     }
 
-    # Confidence → multiplier (how sure the FM is about the signal)
+    # Confidence -> multiplier (how sure the FM is about the signal)
     CONFIDENCE_MULTIPLIERS: dict[str, float] = {
         "HIGH": 1.3,
         "MEDIUM": 1.0,
@@ -62,19 +62,18 @@ class FSASEngine:
         self,
         fund_exposures: dict[str, list[dict[str, Any]]],
         active_signals: list[dict[str, Any]],
+        benchmark_weights: Optional[dict[str, float]] = None,
         reference_date: Optional[date] = None,
     ) -> list[dict[str, Any]]:
         """
-        Compute FSAS for all funds in the provided exposure dict.
+        Compute FMS for all funds in the provided exposure dict.
 
         Args:
             fund_exposures: {mstar_id: [{sector_name, exposure_pct, month_end_date}]}
-                Each fund has a list of sector exposure records from the
-                most recent holdings date.
             active_signals: [{sector_name, signal, signal_weight, confidence, effective_date}]
-                Currently active FM signals. One per sector.
-            reference_date: Date to use for stale holdings check.
-                Defaults to today.
+            benchmark_weights: {sector_name: weight_pct} — NIFTY 50 allocations.
+                If None, falls back to raw exposure formula (v1 compat).
+            reference_date: Date for stale holdings check. Defaults to today.
 
         Returns:
             List of dicts ready for fund_fsas DB insert. One per fund.
@@ -86,15 +85,16 @@ class FSASEngine:
         if reference_date is None:
             reference_date = date.today()
 
-        # Build a lookup from sector_name → signal data for fast access
+        use_active_weights = benchmark_weights is not None and len(benchmark_weights) > 0
+
+        # Build a lookup from sector_name -> signal data
         signal_lookup: dict[str, dict[str, Any]] = {}
         for sig in active_signals:
             signal_lookup[sig["sector_name"]] = sig
 
-        # Determine the FM signal date (the effective_date of the signal set)
+        # Determine the FM signal date
         fm_signal_date = reference_date
         if active_signals:
-            # Use the most recent effective_date from the signal set
             signal_dates = [
                 sig["effective_date"]
                 for sig in active_signals
@@ -108,94 +108,37 @@ class FSASEngine:
             fund_count=len(fund_exposures),
             signal_count=len(active_signals),
             fm_signal_date=str(fm_signal_date),
+            use_active_weights=use_active_weights,
+            engine_version=ENGINE_VERSION,
         )
 
-        # Step 1: Compute raw FSAS for each fund
+        # Step 1: Compute raw FMS for each fund
         fund_results: list[dict[str, Any]] = []
         raw_fsas_values: list[Optional[float]] = []
-
         stale_cutoff = reference_date - timedelta(days=self.STALE_HOLDINGS_DAYS)
 
         for mstar_id, exposures in fund_exposures.items():
             if not exposures:
-                # Fund has no sector exposure data at all
                 fund_results.append(self._empty_result(
                     mstar_id, fm_signal_date, reference_date
                 ))
                 raw_fsas_values.append(None)
                 continue
 
-            raw_fsas = 0.0
-            avoid_exposure_pct = 0.0
-            sector_contributions: dict[str, dict[str, Any]] = {}
-            holdings_date: Optional[date] = None
+            result = self._compute_single_fund(
+                mstar_id=mstar_id,
+                exposures=exposures,
+                signal_lookup=signal_lookup,
+                benchmark_weights=benchmark_weights or {},
+                use_active_weights=use_active_weights,
+                fm_signal_date=fm_signal_date,
+                reference_date=reference_date,
+                stale_cutoff=stale_cutoff,
+            )
+            fund_results.append(result)
+            raw_fsas_values.append(result["raw_fsas"])
 
-            for exposure in exposures:
-                sector_name = exposure["sector_name"]
-                exposure_pct = float(exposure["exposure_pct"])
-
-                # Track the holdings date (should be same for all sectors in a fund)
-                if holdings_date is None and exposure.get("month_end_date") is not None:
-                    holdings_date = exposure["month_end_date"]
-
-                # Look up the FM signal for this sector
-                signal_data = signal_lookup.get(sector_name)
-
-                if signal_data is None:
-                    # No FM signal for this sector — treat as NEUTRAL
-                    signal = "NEUTRAL"
-                    signal_weight = self.SIGNAL_WEIGHTS["NEUTRAL"]
-                    confidence = "MEDIUM"
-                    confidence_multiplier = self.CONFIDENCE_MULTIPLIERS["MEDIUM"]
-                else:
-                    signal = signal_data["signal"]
-                    signal_weight = float(signal_data.get(
-                        "signal_weight",
-                        self.SIGNAL_WEIGHTS.get(signal, 0.0),
-                    ))
-                    confidence = signal_data.get("confidence", "MEDIUM")
-                    confidence_multiplier = self.CONFIDENCE_MULTIPLIERS.get(
-                        confidence, 1.0
-                    )
-
-                # Compute this sector's contribution
-                contribution = exposure_pct * signal_weight * confidence_multiplier
-                raw_fsas += contribution
-
-                # Track AVOID exposure
-                if signal == "AVOID":
-                    avoid_exposure_pct += exposure_pct
-
-                # Store per-sector breakdown for transparency
-                sector_contributions[sector_name] = {
-                    "exposure_pct": round(exposure_pct, 4),
-                    "signal": signal,
-                    "signal_weight": signal_weight,
-                    "confidence": confidence,
-                    "confidence_multiplier": confidence_multiplier,
-                    "contribution": round(contribution, 4),
-                }
-
-            # Check if holdings are stale
-            stale_holdings_flag = False
-            if holdings_date is not None and holdings_date < stale_cutoff:
-                stale_holdings_flag = True
-
-            fund_results.append({
-                "mstar_id": mstar_id,
-                "fm_signal_date": fm_signal_date,
-                "holdings_date": holdings_date or reference_date,
-                "raw_fsas": round(raw_fsas, 5),
-                "fsas": 0.0,  # Placeholder — filled after normalization
-                "sector_contributions": sector_contributions,
-                "stale_holdings_flag": stale_holdings_flag,
-                "sector_drift_alerts": None,  # Computed separately if needed
-                "avoid_exposure_pct": round(avoid_exposure_pct, 2),
-                "engine_version": ENGINE_VERSION,
-            })
-            raw_fsas_values.append(raw_fsas)
-
-        # Step 2: Normalize raw FSAS across all funds to 0-100
+        # Step 2: Normalize raw FMS across all funds to 0-100
         normalised_fsas = min_max_normalise(raw_fsas_values, higher_is_better=True)
 
         for idx, result in enumerate(fund_results):
@@ -214,6 +157,93 @@ class FSASEngine:
 
         return fund_results
 
+    def _compute_single_fund(
+        self,
+        mstar_id: str,
+        exposures: list[dict[str, Any]],
+        signal_lookup: dict[str, dict[str, Any]],
+        benchmark_weights: dict[str, float],
+        use_active_weights: bool,
+        fm_signal_date: date,
+        reference_date: date,
+        stale_cutoff: date,
+    ) -> dict[str, Any]:
+        """Compute raw FMS and sector contributions for one fund."""
+        raw_fsas = 0.0
+        avoid_exposure_pct = 0.0
+        sector_contributions: dict[str, dict[str, Any]] = {}
+        holdings_date: Optional[date] = None
+
+        for exposure in exposures:
+            sector_name = exposure["sector_name"]
+            exposure_pct = float(exposure["exposure_pct"])
+
+            if holdings_date is None and exposure.get("month_end_date") is not None:
+                holdings_date = exposure["month_end_date"]
+
+            # Look up the FM signal for this sector
+            signal_data = signal_lookup.get(sector_name)
+            if signal_data is None:
+                signal = "NEUTRAL"
+                signal_weight = self.SIGNAL_WEIGHTS["NEUTRAL"]
+                confidence = "MEDIUM"
+                confidence_multiplier = self.CONFIDENCE_MULTIPLIERS["MEDIUM"]
+            else:
+                signal = signal_data["signal"]
+                signal_weight = float(signal_data.get(
+                    "signal_weight",
+                    self.SIGNAL_WEIGHTS.get(signal, 0.0),
+                ))
+                confidence = signal_data.get("confidence", "MEDIUM")
+                confidence_multiplier = self.CONFIDENCE_MULTIPLIERS.get(
+                    confidence, 1.0
+                )
+
+            # v2: Active weight = fund_exposure - benchmark_weight
+            benchmark_wt = benchmark_weights.get(sector_name, 0.0)
+            if use_active_weights:
+                active_weight = exposure_pct - benchmark_wt
+                contribution = active_weight * signal_weight * confidence_multiplier
+            else:
+                # v1 fallback: raw exposure * signal_weight * confidence
+                active_weight = exposure_pct  # No benchmark subtraction
+                contribution = exposure_pct * signal_weight * confidence_multiplier
+
+            raw_fsas += contribution
+
+            # Track AVOID exposure
+            if signal == "AVOID":
+                avoid_exposure_pct += exposure_pct
+
+            # Store per-sector breakdown for transparency
+            sector_contributions[sector_name] = {
+                "exposure_pct": round(exposure_pct, 4),
+                "benchmark_weight_pct": round(benchmark_wt, 4),
+                "active_weight": round(active_weight, 4),
+                "signal": signal,
+                "signal_weight": signal_weight,
+                "confidence": confidence,
+                "confidence_multiplier": confidence_multiplier,
+                "contribution": round(contribution, 4),
+            }
+
+        stale_holdings_flag = False
+        if holdings_date is not None and holdings_date < stale_cutoff:
+            stale_holdings_flag = True
+
+        return {
+            "mstar_id": mstar_id,
+            "fm_signal_date": fm_signal_date,
+            "holdings_date": holdings_date or reference_date,
+            "raw_fsas": round(raw_fsas, 5),
+            "fsas": 0.0,  # Placeholder — filled after normalization
+            "sector_contributions": sector_contributions,
+            "stale_holdings_flag": stale_holdings_flag,
+            "sector_drift_alerts": None,
+            "avoid_exposure_pct": round(avoid_exposure_pct, 2),
+            "engine_version": ENGINE_VERSION,
+        }
+
     def get_alignment_summary(
         self,
         sector_contributions: dict[str, dict[str, Any]],
@@ -221,16 +251,8 @@ class FSASEngine:
         """
         Build a per-fund alignment summary from sector contributions.
 
-        Returns:
-            Dict with:
-                - aligned_sectors: list of sectors where signal is OVERWEIGHT/ACCUMULATE
-                  AND fund has > 0% exposure
-                - misaligned_sectors: list of sectors where signal is UNDERWEIGHT/AVOID
-                  AND fund has > 2% exposure
-                - neutral_sectors: list of sectors with NEUTRAL signal
-                - avoid_exposure_pct: total % in AVOID sectors
-                - top_aligned: top 3 aligned sectors by positive contribution
-                - top_misaligned: top 3 misaligned sectors by negative contribution
+        Returns dict with aligned_sectors, misaligned_sectors, neutral_sectors,
+        avoid_exposure_pct, top_aligned, top_misaligned.
         """
         aligned: list[dict[str, Any]] = []
         misaligned: list[dict[str, Any]] = []
@@ -241,28 +263,30 @@ class FSASEngine:
             signal = data.get("signal", "NEUTRAL")
             exposure_pct = data.get("exposure_pct", 0.0)
             contribution = data.get("contribution", 0.0)
+            active_weight = data.get("active_weight", exposure_pct)
 
             if signal == "AVOID":
                 avoid_exposure_pct += exposure_pct
 
-            if signal in ("OVERWEIGHT", "ACCUMULATE") and exposure_pct > 0:
+            if signal in ("OVERWEIGHT", "ACCUMULATE") and active_weight > 0:
                 aligned.append({
                     "sector": sector_name,
                     "signal": signal,
                     "exposure_pct": exposure_pct,
+                    "active_weight": active_weight,
                     "contribution": contribution,
                 })
-            elif signal in ("UNDERWEIGHT", "AVOID") and exposure_pct > 2.0:
+            elif signal in ("UNDERWEIGHT", "AVOID") and active_weight > 0:
                 misaligned.append({
                     "sector": sector_name,
                     "signal": signal,
                     "exposure_pct": exposure_pct,
+                    "active_weight": active_weight,
                     "contribution": contribution,
                 })
             elif signal == "NEUTRAL":
                 neutral.append(sector_name)
 
-        # Sort by contribution magnitude
         aligned.sort(key=lambda x: x["contribution"], reverse=True)
         misaligned.sort(key=lambda x: x["contribution"])
 

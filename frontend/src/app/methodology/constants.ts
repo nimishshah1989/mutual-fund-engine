@@ -41,6 +41,97 @@ export interface HardOverride {
   reason: string;
 }
 
+export interface MatrixCell {
+  qfs: "HIGH" | "MID" | "LOW";
+  fms: "HIGH" | "MID" | "LOW";
+  tier: string;
+  action: string;
+  tierColor: string;
+  bgColor: string;
+}
+
+// v3 Decision Matrix: tier/action is determined by the intersection
+// of QFS tercile (Y-axis) and FMS tercile (X-axis).
+export const DECISION_MATRIX: MatrixCell[] = [
+  // HIGH QFS row
+  {
+    qfs: "HIGH",
+    fms: "HIGH",
+    tier: "CORE",
+    action: "ACCUMULATE",
+    tierColor: "bg-emerald-600 text-white",
+    bgColor: "bg-emerald-50",
+  },
+  {
+    qfs: "HIGH",
+    fms: "MID",
+    tier: "QUALITY",
+    action: "ACCUMULATE",
+    tierColor: "bg-blue-600 text-white",
+    bgColor: "bg-blue-50",
+  },
+  {
+    qfs: "HIGH",
+    fms: "LOW",
+    tier: "WATCH",
+    action: "HOLD",
+    tierColor: "bg-amber-500 text-white",
+    bgColor: "bg-amber-50",
+  },
+  // MID QFS row
+  {
+    qfs: "MID",
+    fms: "HIGH",
+    tier: "QUALITY",
+    action: "ACCUMULATE",
+    tierColor: "bg-blue-600 text-white",
+    bgColor: "bg-blue-50",
+  },
+  {
+    qfs: "MID",
+    fms: "MID",
+    tier: "WATCH",
+    action: "HOLD",
+    tierColor: "bg-amber-500 text-white",
+    bgColor: "bg-amber-50",
+  },
+  {
+    qfs: "MID",
+    fms: "LOW",
+    tier: "CAUTION",
+    action: "REDUCE",
+    tierColor: "bg-orange-500 text-white",
+    bgColor: "bg-orange-50",
+  },
+  // LOW QFS row
+  {
+    qfs: "LOW",
+    fms: "HIGH",
+    tier: "WATCH",
+    action: "HOLD",
+    tierColor: "bg-amber-500 text-white",
+    bgColor: "bg-amber-50",
+  },
+  {
+    qfs: "LOW",
+    fms: "MID",
+    tier: "CAUTION",
+    action: "REDUCE",
+    tierColor: "bg-orange-500 text-white",
+    bgColor: "bg-orange-50",
+  },
+  {
+    qfs: "LOW",
+    fms: "LOW",
+    tier: "EXIT",
+    action: "EXIT",
+    tierColor: "bg-red-600 text-white",
+    bgColor: "bg-red-50",
+  },
+];
+
+// DEPRECATED: Old single-axis percentile thresholds. Kept for reference.
+// v3 uses the 3x3 Decision Matrix (DECISION_MATRIX) instead.
 export const TIER_PERCENTILES: TierPercentile[] = [
   {
     tier: "CORE",
@@ -188,7 +279,7 @@ export const V2_ACTIONS: ActionDefinition[] = [
     action: "ACCUMULATE",
     tier: "CORE / QUALITY",
     description:
-      "Add to portfolio. Strong quantitative profile — suitable for fresh deployment or systematic investment.",
+      "Add to portfolio. Strong quantitative profile and/or FM alignment — suitable for fresh deployment or systematic investment.",
   },
   {
     action: "HOLD",
@@ -200,13 +291,13 @@ export const V2_ACTIONS: ActionDefinition[] = [
     action: "REDUCE",
     tier: "CAUTION",
     description:
-      "Reduce exposure. Below-average performer \u2014 shift capital to better alternatives.",
+      "Reduce exposure. Below-average performer or misaligned with FM views \u2014 shift capital to better alternatives.",
   },
   {
     action: "EXIT",
     tier: "EXIT",
     description:
-      "Full redemption. Bottom of category — redeem and reallocate capital.",
+      "Full redemption. Bottom of category on both axes — redeem and reallocate capital.",
   },
 ];
 

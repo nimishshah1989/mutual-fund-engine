@@ -3,13 +3,14 @@ services/scoring_service.py
 
 Orchestrator for the scoring pipeline:
     1. QFS  — compute quantitative scores for all eligible funds
-    2. Shortlist — top N per category by QFS rank
-    3. FSAS — sector alignment scoring (delegated to fsas_scoring.py)
-    4. Recommend — tiers and actions (delegated to scoring_pipeline.py)
+    2. FMS  — FM alignment scoring for ALL funds (v3 — no shortlist)
+    3. Matrix — 3x3 decision matrix classification
+    4. Recommend — tiers and actions from matrix + overrides
 
 Data loading: scoring_data_loader.py (ScoringDataLoader)
-FSAS computation: fsas_scoring.py (FSASScorer)
+FMS computation: fsas_scoring.py (FSASScorer)
 Pipeline + recommendations: scoring_pipeline.py (ScoringPipeline)
+Benchmark management: benchmark_service.py (BenchmarkService)
 """
 
 from __future__ import annotations
@@ -21,22 +22,23 @@ import structlog
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.engines.fsas_engine import FSASEngine
+from app.engines.matrix_engine import MatrixEngine
 from app.engines.qfs_engine import QFSEngine
 from app.engines.tier_engine import TierEngine
 from app.repositories.score_repo import ScoreRepository
+from app.services.benchmark_service import BenchmarkService
 from app.services.fsas_scoring import FSASScorer
 from app.services.scoring_data_loader import ScoringDataLoader
 from app.services.scoring_pipeline import ScoringPipeline
 
 logger = structlog.get_logger(__name__)
 
-# Default: top 5 funds per category are shortlisted
-# TODO: move to engine_config table
+# Default: top 5 funds per category (legacy — not used in v3 pipeline)
 DEFAULT_SHORTLIST_N = 5
 
 
 class ScoringService:
-    """Orchestrates QFS, shortlist, FSAS, and recommendation scoring."""
+    """Orchestrates QFS, FMS, benchmark, matrix, and recommendation scoring."""
 
     def __init__(self, session: AsyncSession) -> None:
         self.session = session
@@ -47,6 +49,67 @@ class ScoringService:
         self.data_loader = ScoringDataLoader(session, self.score_repo)
         self._fsas_scorer = FSASScorer(self.score_repo, self.data_loader, self.fsas_engine)
         self._pipeline = ScoringPipeline(self)
+        self._benchmark_service = BenchmarkService(session)
+
+        # Initialize matrix engine — load thresholds from config if available
+        self.matrix_engine = MatrixEngine()
+
+    async def _load_matrix_thresholds(self) -> None:
+        """Load matrix tercile thresholds from engine_config if available."""
+        config = await self.data_loader.load_engine_config("matrix_thresholds")
+        if config and isinstance(config, dict):
+            low_upper = config.get("low_upper", 33.33)
+            high_lower = config.get("high_lower", 66.67)
+            self.matrix_engine = MatrixEngine(
+                low_upper=float(low_upper),
+                high_lower=float(high_lower),
+            )
+
+    # ===================================================================
+    # Benchmark management
+    # ===================================================================
+
+    async def ensure_benchmark_weights(self) -> dict[str, float]:
+        """
+        Get benchmark weights, auto-refreshing if stale.
+        Reads benchmark_mstar_id and benchmark_name from engine_config.
+        """
+        mstar_id_config = await self.data_loader.load_engine_config("benchmark_mstar_id")
+        name_config = await self.data_loader.load_engine_config("benchmark_name")
+        stale_config = await self.data_loader.load_engine_config("benchmark_stale_days")
+
+        benchmark_mstar_id = (
+            mstar_id_config.get("value", "F00000VBPN") if mstar_id_config else "F00000VBPN"
+        )
+        benchmark_name = (
+            name_config.get("value", "NIFTY 50") if name_config else "NIFTY 50"
+        )
+        max_age_days = int(
+            stale_config.get("value", 45) if stale_config else 45
+        )
+
+        return await self._benchmark_service.ensure_fresh_weights(
+            benchmark_mstar_id=benchmark_mstar_id,
+            benchmark_name=benchmark_name,
+            max_age_days=max_age_days,
+        )
+
+    async def refresh_benchmark(self) -> dict[str, Any]:
+        """Force-refresh benchmark weights from Morningstar."""
+        mstar_id_config = await self.data_loader.load_engine_config("benchmark_mstar_id")
+        name_config = await self.data_loader.load_engine_config("benchmark_name")
+
+        benchmark_mstar_id = (
+            mstar_id_config.get("value", "F00000VBPN") if mstar_id_config else "F00000VBPN"
+        )
+        benchmark_name = (
+            name_config.get("value", "NIFTY 50") if name_config else "NIFTY 50"
+        )
+
+        return await self._benchmark_service.refresh_benchmark_weights(
+            benchmark_mstar_id=benchmark_mstar_id,
+            benchmark_name=benchmark_name,
+        )
 
     # ===================================================================
     # QFS computation (Layer 1)
@@ -129,7 +192,7 @@ class ScoringService:
         return results
 
     # ===================================================================
-    # Shortlist generation (Layer 2a)
+    # Shortlist generation (Legacy — kept for backward compat)
     # ===================================================================
 
     async def generate_shortlist(
@@ -137,98 +200,65 @@ class ScoringService:
         shortlist_n: int = DEFAULT_SHORTLIST_N,
         trigger_event: str = "manual_compute",
     ) -> dict[str, Any]:
-        """Generate the shortlist: top N funds per category by QFS rank."""
-        today = date.today()
-        logger.info("shortlist_generation_start", n=shortlist_n, date=str(today))
-
-        categories = await self.data_loader.get_eligible_categories()
-        total_shortlisted = 0
-        category_counts: dict[str, int] = {}
-
-        await self.score_repo.clear_shortlist_for_date(today)
-
-        for category_name in categories:
-            fund_ids = await self.data_loader.load_eligible_fund_ids(category_name)
-            if not fund_ids:
-                continue
-
-            qfs_records = await self.score_repo.get_latest_qfs_by_mstar_ids(fund_ids)
-            if not qfs_records:
-                continue
-
-            sorted_records = sorted(
-                qfs_records,
-                key=lambda r: float(r.qfs) if r.qfs is not None else 0.0,
-                reverse=True,
-            )
-            total_in_category = len(sorted_records)
-            top_n = sorted_records[:shortlist_n]
-
-            MIN_SHORTLIST_PERCENTILE = 40.0
-            shortlist_records = []
-            for rank, record in enumerate(top_n, start=1):
-                if total_in_category > 1:
-                    percentile = (total_in_category - rank) / (total_in_category - 1) * 100.0
-                    # Compress to [20, 80] for tiny categories — prevents extreme
-                    # tier assignments from minimal peer differences
-                    if total_in_category < 5:
-                        percentile = 20.0 + (percentile / 100.0) * 60.0
-                else:
-                    percentile = 50.0
-
-                if percentile < MIN_SHORTLIST_PERCENTILE:
-                    continue
-
-                shortlist_records.append({
-                    "mstar_id": record.mstar_id,
-                    "category_name": category_name,
-                    "qfs_score": float(record.qfs) if record.qfs is not None else 0.0,
-                    "qfs_rank": rank,
-                    "total_in_category": total_in_category,
-                    "shortlist_reason": "top_n_by_qfs",
-                    "computed_date": today,
-                })
-
-            if shortlist_records:
-                await self.score_repo.bulk_upsert_shortlist(shortlist_records)
-                total_shortlisted += len(shortlist_records)
-                category_counts[category_name] = len(shortlist_records)
-
-        logger.info(
-            "shortlist_generation_complete",
-            total_shortlisted=total_shortlisted, categories=len(category_counts),
-        )
+        """
+        DEPRECATED: Generate shortlist. In v3, shortlist is not used.
+        Kept for backward compat — returns empty summary.
+        """
+        logger.warning("generate_shortlist_deprecated", trigger=trigger_event)
         return {
-            "total_shortlisted": total_shortlisted,
-            "categories": len(category_counts),
-            "category_counts": category_counts,
-            "computed_date": str(today),
-            "status": "completed",
+            "total_shortlisted": 0,
+            "categories": 0,
+            "category_counts": {},
+            "computed_date": str(date.today()),
+            "status": "deprecated",
+            "note": "Shortlist is deprecated in v3 Decision Matrix pipeline.",
         }
 
     # ===================================================================
-    # FSAS (Layer 2b) — delegated to FSASScorer
+    # FMS (Layer 2) — delegated to FSASScorer
     # ===================================================================
+
+    async def compute_fms_for_all_funds(
+        self,
+        benchmark_weights: Optional[dict[str, float]] = None,
+        trigger_event: str = "manual_compute",
+    ) -> dict[str, Any]:
+        """Compute FMS for ALL eligible funds (v3 default)."""
+        return await self._fsas_scorer.compute_for_all_funds(
+            benchmark_weights=benchmark_weights,
+            trigger_event=trigger_event,
+        )
 
     async def compute_fsas_for_shortlisted(
         self, trigger_event: str = "manual_compute",
     ) -> dict[str, Any]:
-        """Compute FSAS for shortlisted funds only."""
-        return await self._fsas_scorer.compute_for_shortlisted(trigger_event=trigger_event)
+        """Legacy: Compute FMS for shortlisted funds only."""
+        benchmark_weights = await self.ensure_benchmark_weights()
+        return await self._fsas_scorer.compute_for_shortlisted(
+            benchmark_weights=benchmark_weights,
+            trigger_event=trigger_event,
+        )
 
     async def compute_fsas_for_category(
         self, category_name: str, trigger_event: str = "manual_compute",
     ) -> dict[str, Any]:
-        """Compute FSAS for all eligible funds in one category."""
+        """Compute FMS for all eligible funds in one category."""
+        benchmark_weights = await self.ensure_benchmark_weights()
         return await self._fsas_scorer.compute_for_category(
-            category_name=category_name, trigger_event=trigger_event,
+            category_name=category_name,
+            benchmark_weights=benchmark_weights,
+            trigger_event=trigger_event,
         )
 
     async def compute_fsas_for_all_categories(
         self, trigger_event: str = "scheduled_recompute",
     ) -> list[dict[str, Any]]:
-        """Compute FSAS for every category with eligible funds."""
-        return await self._fsas_scorer.compute_for_all_categories(trigger_event=trigger_event)
+        """Compute FMS for every category with eligible funds."""
+        benchmark_weights = await self.ensure_benchmark_weights()
+        return await self._fsas_scorer.compute_for_all_categories(
+            benchmark_weights=benchmark_weights,
+            trigger_event=trigger_event,
+        )
 
     # ===================================================================
     # Pipeline + Recommendations — delegated to ScoringPipeline
@@ -237,8 +267,11 @@ class ScoringService:
     async def assign_recommendations(
         self, trigger_event: str = "manual_compute",
     ) -> dict[str, Any]:
-        """Assign tiers and actions based on QFS percentile rank."""
-        return await self._pipeline.assign_recommendations(trigger_event=trigger_event)
+        """Assign tiers and actions via 3x3 matrix."""
+        await self._load_matrix_thresholds()
+        return await self._pipeline.assign_matrix_recommendations(
+            trigger_event=trigger_event,
+        )
 
     async def compute_full_pipeline(
         self,
@@ -246,7 +279,8 @@ class ScoringService:
         trigger_event: str = "full_pipeline",
         shortlist_n: Optional[int] = None,
     ) -> dict[str, Any]:
-        """Run QFS -> shortlist -> FSAS -> recommend pipeline."""
+        """Run QFS -> FMS -> Matrix -> Recommend pipeline."""
+        await self._load_matrix_thresholds()
         return await self._pipeline.compute_full_pipeline(
             category_name=category_name,
             trigger_event=trigger_event,
@@ -257,6 +291,7 @@ class ScoringService:
         self, trigger_event: str = "scheduled_full_pipeline",
     ) -> list[dict[str, Any]]:
         """Run the complete pipeline for all categories."""
+        await self._load_matrix_thresholds()
         return await self._pipeline.compute_full_pipeline_all_categories(
             trigger_event=trigger_event,
         )

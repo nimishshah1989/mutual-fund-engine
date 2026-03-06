@@ -8,13 +8,19 @@ import type {
   FundScoreOverview,
   HealthReady,
   DataFreshnessEntry,
+  MatrixCellSummary,
+  MatrixSummaryResponse,
 } from "@/types/api";
-import type { TierCount, TierActionRow } from "@/components/dashboard/types";
+import type { TierCount, TierActionRow, ActionDistributionRow } from "@/components/dashboard/types";
+
+/** Canonical action order for display */
+const ACTION_ORDER = ["ACCUMULATE", "HOLD", "REDUCE", "EXIT"] as const;
 
 export interface DashboardData {
   /* Raw data */
   funds: FundScoreOverview[];
   health: HealthReady | null;
+  matrixCells: MatrixCellSummary[];
 
   /* Loading / error state */
   loading: boolean;
@@ -26,7 +32,8 @@ export interface DashboardData {
   avgQFS: number;
   coreCount: number;
   qualityCount: number;
-  shortlistedCount: number;
+  accumulateCount: number;
+  matrixCoverageCount: number;
   lastScoredDate: string | null;
   dataFreshness: string;
   morningstarFreshness: DataFreshnessEntry | undefined;
@@ -34,11 +41,13 @@ export interface DashboardData {
   /* Chart / table data */
   tierCounts: TierCount[];
   tierActionRows: TierActionRow[];
+  actionDistribution: ActionDistributionRow[];
 }
 
 export function useDashboardData(): DashboardData {
   const [funds, setFunds] = useState<FundScoreOverview[]>([]);
   const [health, setHealth] = useState<HealthReady | null>(null);
+  const [matrixCells, setMatrixCells] = useState<MatrixCellSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -46,15 +55,19 @@ export function useDashboardData(): DashboardData {
     setLoading(true);
     setError(null);
     try {
-      const [scoresRes, healthRes] = await Promise.all([
+      const [scoresRes, healthRes, matrixRes] = await Promise.all([
         apiFetch<ApiResponse<FundScoreOverview[]>>(
           "/api/v1/scores/overview?limit=1000",
         ),
         apiFetch<HealthReady>("/health/ready"),
+        apiFetch<ApiResponse<MatrixSummaryResponse>>(
+          "/api/v1/scores/matrix",
+        ),
       ]);
 
       setFunds(scoresRes.data ?? []);
       setHealth(healthRes);
+      setMatrixCells(matrixRes.data?.cells ?? []);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load data");
     } finally {
@@ -90,9 +103,17 @@ export function useDashboardData(): DashboardData {
     [funds],
   );
 
-  const shortlistedCount = useMemo(
+  /* Count of funds with action = ACCUMULATE (replaces shortlistedCount) */
+  const accumulateCount = useMemo(
     () =>
-      funds.filter((f) => f.qfs_rank != null && f.qfs_rank <= 5).length,
+      funds.filter((f) => (f.action ?? "").toUpperCase() === "ACCUMULATE").length,
+    [funds],
+  );
+
+  /* Count of funds that have a matrix_position assigned */
+  const matrixCoverageCount = useMemo(
+    () =>
+      funds.filter((f) => f.matrix_position != null && f.matrix_position !== "").length,
     [funds],
   );
 
@@ -123,7 +144,7 @@ export function useDashboardData(): DashboardData {
     return Object.entries(map).map(([name, value]) => ({ name, value }));
   }, [funds]);
 
-  /* Tier x Action breakdown */
+  /* Tier x Action breakdown (kept for backward compatibility) */
   const tierActionRows: TierActionRow[] = useMemo(() => {
     const map: Record<string, TierActionRow> = {};
     funds.forEach((f) => {
@@ -148,9 +169,39 @@ export function useDashboardData(): DashboardData {
     return Object.values(map);
   }, [funds]);
 
+  /* Action distribution derived from matrixCells (or fallback to funds) */
+  const actionDistribution: ActionDistributionRow[] = useMemo(() => {
+    const countMap: Record<string, number> = {};
+
+    if (matrixCells.length > 0) {
+      /* Derive from matrix summary — authoritative source */
+      matrixCells.forEach((cell) => {
+        const a = (cell.action ?? "").toUpperCase();
+        countMap[a] = (countMap[a] ?? 0) + cell.fund_count;
+      });
+    } else {
+      /* Fallback: derive from fund-level overview data */
+      funds.forEach((f) => {
+        const a = (f.action ?? "").toUpperCase();
+        if (a) {
+          countMap[a] = (countMap[a] ?? 0) + 1;
+        }
+      });
+    }
+
+    const total = Object.values(countMap).reduce((s, c) => s + c, 0);
+
+    return ACTION_ORDER.map((action) => ({
+      action,
+      count: countMap[action] ?? 0,
+      pct: total > 0 ? ((countMap[action] ?? 0) / total) * 100 : 0,
+    }));
+  }, [matrixCells, funds]);
+
   return {
     funds,
     health,
+    matrixCells,
     loading,
     error,
     refetch: fetchData,
@@ -158,11 +209,13 @@ export function useDashboardData(): DashboardData {
     avgQFS,
     coreCount,
     qualityCount,
-    shortlistedCount,
+    accumulateCount,
+    matrixCoverageCount,
     lastScoredDate,
     dataFreshness,
     morningstarFreshness,
     tierCounts,
     tierActionRows,
+    actionDistribution,
   };
 }

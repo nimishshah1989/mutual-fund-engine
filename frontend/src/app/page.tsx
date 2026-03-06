@@ -22,12 +22,13 @@ export default function DashboardPage() {
     avgQFS,
     coreCount,
     qualityCount,
-    shortlistedCount,
+    accumulateCount,
+    matrixCoverageCount,
     lastScoredDate,
     dataFreshness,
     morningstarFreshness,
     tierCounts,
-    tierActionRows,
+    actionDistribution,
   } = useDashboardData();
 
   if (loading) {
@@ -77,9 +78,9 @@ export default function DashboardPage() {
           colored
         />
         <StatCard
-          label="Shortlisted"
-          value={String(shortlistedCount)}
-          subtext="Top funds per category"
+          label="Accumulate"
+          value={String(accumulateCount)}
+          subtext="Funds recommended to accumulate"
         />
         <StatCard
           label="Core Tier"
@@ -87,9 +88,9 @@ export default function DashboardPage() {
           subtext={`${totalFunds > 0 ? ((coreCount / totalFunds) * 100).toFixed(0) : 0}% of total`}
         />
         <StatCard
-          label="Quality Tier"
-          value={String(qualityCount)}
-          subtext={`${totalFunds > 0 ? ((qualityCount / totalFunds) * 100).toFixed(0) : 0}% of total`}
+          label="Matrix Coverage"
+          value={String(matrixCoverageCount)}
+          subtext={`${totalFunds > 0 ? ((matrixCoverageCount / totalFunds) * 100).toFixed(0) : 0}% of scored funds`}
         />
         <StatCard
           label="Last Scored"
@@ -108,8 +109,8 @@ export default function DashboardPage() {
         />
       </div>
 
-      {/* Tier x Action breakdown table */}
-      <TierActionTable rows={tierActionRows} />
+      {/* Action distribution table */}
+      <TierActionTable rows={actionDistribution} />
     </div>
   );
 }

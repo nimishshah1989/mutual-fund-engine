@@ -24,8 +24,8 @@ export default function FundUniversePage() {
 
   const [search, setSearch] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("");
-  const [tierFilter, setTierFilter] = useState("");
   const [actionFilter, setActionFilter] = useState("");
+  const [matrixFilter, setMatrixFilter] = useState<string | null>(null);
 
   const [sortField, setSortField] = useState<SortField>("qfs_rank");
   const [sortDesc, setSortDesc] = useState(false);
@@ -72,15 +72,15 @@ export default function FundUniversePage() {
       filtered = filtered.filter((f) => f.category_name === categoryFilter);
     }
 
-    if (tierFilter) {
-      filtered = filtered.filter(
-        (f) => (f.tier ?? "").toUpperCase() === tierFilter.toUpperCase(),
-      );
-    }
-
     if (actionFilter) {
       filtered = filtered.filter(
         (f) => (f.action ?? "").toUpperCase() === actionFilter.toUpperCase(),
+      );
+    }
+
+    if (matrixFilter) {
+      filtered = filtered.filter(
+        (f) => (f.matrix_position ?? "") === matrixFilter,
       );
     }
 
@@ -99,7 +99,7 @@ export default function FundUniversePage() {
     });
 
     return filtered;
-  }, [funds, search, categoryFilter, tierFilter, actionFilter, sortField, sortDesc]);
+  }, [funds, search, categoryFilter, actionFilter, matrixFilter, sortField, sortDesc]);
 
   /* ---- Sort handler ---- */
   function handleSort(field: SortField) {
@@ -175,13 +175,13 @@ export default function FundUniversePage() {
         onSearchChange={setSearch}
         categoryFilter={categoryFilter}
         onCategoryChange={setCategoryFilter}
-        tierFilter={tierFilter}
-        onTierChange={setTierFilter}
         actionFilter={actionFilter}
         onActionChange={setActionFilter}
         categories={categories}
         displayCount={displayFunds.length}
         totalCount={totalFunds}
+        matrixSelected={matrixFilter !== null}
+        onClearMatrix={() => setMatrixFilter(null)}
       />
 
       <FundTable

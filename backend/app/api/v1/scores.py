@@ -182,8 +182,10 @@ async def _compute_single_layer_fsas(
     service: ScoringService,
     body: ScoreComputeRequest,
 ) -> list[dict]:
-    """Run FSAS for shortlisted funds."""
-    summary = await service.compute_fsas_for_shortlisted(
+    """Run FMS for all eligible funds (v3 — no shortlist filtering)."""
+    benchmark_weights = await service.ensure_benchmark_weights()
+    summary = await service.compute_fms_for_all_funds(
+        benchmark_weights=benchmark_weights,
         trigger_event=body.trigger_event,
     )
     return [summary]

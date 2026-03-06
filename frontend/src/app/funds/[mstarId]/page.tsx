@@ -10,7 +10,7 @@ import LoadingSkeleton from "@/components/LoadingSkeleton";
 import ErrorState from "@/components/ErrorState";
 import FundHeaderCard from "./FundHeaderCard";
 import QFSScoreCard from "./QFSScoreCard";
-import FSASScoreCard from "./FSASScoreCard";
+import FMScoreCard from "./FMScoreCard";
 import RecommendationCard from "./RecommendationCard";
 import MetricBreakdownTable from "./MetricBreakdownTable";
 import SectorContributionTable from "./SectorContributionTable";
@@ -108,7 +108,7 @@ export default function FundDetailPage() {
       {/* Three score cards in a row */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
         <QFSScoreCard qfs={fund.qfs} />
-        <FSASScoreCard fsas={fund.fsas} />
+        <FMScoreCard fsas={fund.fsas} recommendation={fund.recommendation} />
         <RecommendationCard recommendation={fund.recommendation} />
       </div>
 

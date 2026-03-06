@@ -3,4 +3,4 @@
 /* ------------------------------------------------------------------ */
 
 /** Sortable column keys -- QFS-based, no CRS */
-export type SortField = "qfs" | "data_completeness_pct" | "qfs_rank";
+export type SortField = "qfs" | "data_completeness_pct" | "qfs_rank" | "fm_score";

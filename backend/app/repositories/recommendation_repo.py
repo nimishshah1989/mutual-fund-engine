@@ -105,3 +105,87 @@ class RecommendationRepository(BaseRepository[FundRecommendation]):
             .order_by(FundRecommendation.tier, FundRecommendation.qfs.desc())
         )
         return list(result.scalars().all())
+
+    # ===================================================================
+    # Decision Matrix queries (v3)
+    # ===================================================================
+
+    async def get_matrix_summary(self) -> list[dict]:
+        """
+        Get fund count and average scores per matrix cell.
+        Returns a list of dicts with matrix_position, fund_count, avg_qfs, avg_fms.
+        """
+        latest_date_subq = (
+            select(
+                FundRecommendation.mstar_id,
+                func.max(FundRecommendation.computed_date).label("max_date"),
+            )
+            .group_by(FundRecommendation.mstar_id)
+            .subquery()
+        )
+
+        result = await self.session.execute(
+            select(
+                FundRecommendation.matrix_position,
+                FundRecommendation.matrix_row,
+                FundRecommendation.matrix_col,
+                FundRecommendation.tier,
+                FundRecommendation.action,
+                func.count(FundRecommendation.id).label("fund_count"),
+                func.avg(FundRecommendation.qfs).label("avg_qfs"),
+                func.avg(FundRecommendation.fm_score).label("avg_fms"),
+            )
+            .join(
+                latest_date_subq,
+                (FundRecommendation.mstar_id == latest_date_subq.c.mstar_id)
+                & (FundRecommendation.computed_date == latest_date_subq.c.max_date),
+            )
+            .where(FundRecommendation.matrix_position.isnot(None))
+            .group_by(
+                FundRecommendation.matrix_position,
+                FundRecommendation.matrix_row,
+                FundRecommendation.matrix_col,
+                FundRecommendation.tier,
+                FundRecommendation.action,
+            )
+            .order_by(FundRecommendation.matrix_position)
+        )
+
+        return [
+            {
+                "matrix_position": row.matrix_position,
+                "matrix_row": row.matrix_row,
+                "matrix_col": row.matrix_col,
+                "tier": row.tier,
+                "action": row.action,
+                "fund_count": row.fund_count,
+                "avg_qfs": float(row.avg_qfs) if row.avg_qfs else 0.0,
+                "avg_fms": float(row.avg_fms) if row.avg_fms else 0.0,
+            }
+            for row in result.all()
+        ]
+
+    async def get_funds_by_matrix_position(
+        self, position: str,
+    ) -> list[FundRecommendation]:
+        """Get latest recommendations for all funds in a specific matrix cell."""
+        latest_date_subq = (
+            select(
+                FundRecommendation.mstar_id,
+                func.max(FundRecommendation.computed_date).label("max_date"),
+            )
+            .group_by(FundRecommendation.mstar_id)
+            .subquery()
+        )
+
+        result = await self.session.execute(
+            select(FundRecommendation)
+            .join(
+                latest_date_subq,
+                (FundRecommendation.mstar_id == latest_date_subq.c.mstar_id)
+                & (FundRecommendation.computed_date == latest_date_subq.c.max_date),
+            )
+            .where(FundRecommendation.matrix_position == position)
+            .order_by(FundRecommendation.qfs.desc())
+        )
+        return list(result.scalars().all())

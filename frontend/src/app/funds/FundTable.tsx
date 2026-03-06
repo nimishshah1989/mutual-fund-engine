@@ -10,6 +10,36 @@ import { categoryGroupColor } from "@/lib/colors";
 import type { SortField } from "./types";
 
 /* ------------------------------------------------------------------ */
+/*  Matrix position badge styling                                      */
+/* ------------------------------------------------------------------ */
+
+const MATRIX_BADGE_STYLES: Record<string, string> = {
+  HIGH_HIGH: "bg-emerald-100 text-emerald-700",
+  HIGH_MID: "bg-blue-100 text-blue-700",
+  MID_HIGH: "bg-blue-100 text-blue-700",
+  HIGH_LOW: "bg-amber-100 text-amber-700",
+  MID_MID: "bg-amber-100 text-amber-700",
+  LOW_HIGH: "bg-amber-100 text-amber-700",
+  MID_LOW: "bg-orange-100 text-orange-700",
+  LOW_MID: "bg-orange-100 text-orange-700",
+  LOW_LOW: "bg-red-100 text-red-700",
+};
+
+function MatrixBadge({ position }: { position: string | null | undefined }) {
+  if (!position) {
+    return <span className="text-sm text-slate-400 font-mono">&mdash;</span>;
+  }
+  const colorClasses = MATRIX_BADGE_STYLES[position] ?? "bg-slate-100 text-slate-600";
+  return (
+    <span
+      className={`inline-block rounded-full px-2 py-0.5 text-[11px] font-medium whitespace-nowrap ${colorClasses}`}
+    >
+      {position.replace("_", "/")}
+    </span>
+  );
+}
+
+/* ------------------------------------------------------------------ */
 /*  Fund Table -- sortable data table for the fund universe            */
 /* ------------------------------------------------------------------ */
 
@@ -59,6 +89,15 @@ export default function FundTable({
                 className={sortableHeaderClasses}
               >
                 Fund Score{sortIndicator("qfs", sortField, sortDesc)}
+              </th>
+              <th
+                onClick={() => onSort("fm_score")}
+                className={sortableHeaderClasses}
+              >
+                FM Score{sortIndicator("fm_score", sortField, sortDesc)}
+              </th>
+              <th className="px-4 py-3 text-center text-xs font-semibold text-slate-400 uppercase tracking-wider">
+                Matrix
               </th>
               <th className="px-4 py-3 text-center text-xs font-semibold text-slate-400 uppercase tracking-wider">
                 Tier / Action
@@ -110,6 +149,12 @@ export default function FundTable({
                 </td>
                 <td className="px-4 py-3 text-right">
                   <ScoreCell value={fund.qfs} />
+                </td>
+                <td className="px-4 py-3 text-right">
+                  <ScoreCell value={fund.fm_score ?? null} />
+                </td>
+                <td className="px-4 py-3 text-center">
+                  <MatrixBadge position={fund.matrix_position} />
                 </td>
                 <td className="px-4 py-3 text-center">
                   <div className="flex items-center justify-center gap-1.5">

@@ -22,6 +22,10 @@ export interface FundScoreOverview {
   action: string | null;
   qfs_rank: number | null;
   category_rank_pct: number | null;
+  fm_score?: number | null;
+  fm_score_percentile?: number | null;
+  qfs_percentile?: number | null;
+  matrix_position?: string | null;
 }
 
 /* ---------- /api/v1/scores/{mstar_id} ---------- */
@@ -79,6 +83,8 @@ export interface SectorContribution {
   exposure_pct: number;
   signal_weight: number;
   confidence_multiplier: number;
+  benchmark_weight_pct?: number | null;
+  active_weight?: number | null;
 }
 
 export interface RecommendationDetail {
@@ -99,6 +105,12 @@ export interface RecommendationDetail {
   fsas_id: string | null;
   engine_version: string;
   created_at: string;
+  fm_score?: number | null;
+  fm_score_percentile?: number | null;
+  qfs_percentile?: number | null;
+  matrix_row?: string | null;
+  matrix_col?: string | null;
+  matrix_position?: string | null;
 }
 
 /* ---------- Shortlist ---------- */
@@ -132,4 +144,40 @@ export interface SectorAlignmentEntry {
   signal: string;
   exposure_pct: number;
   contribution: number;
+}
+
+/* ---------- Decision Matrix ---------- */
+export interface MatrixCellSummary {
+  matrix_position: string;
+  matrix_row: string;
+  matrix_col: string;
+  tier: string;
+  action: string;
+  fund_count: number;
+  avg_qfs: number;
+  avg_fms: number;
+}
+
+export interface MatrixSummaryResponse {
+  cells: MatrixCellSummary[];
+  total_funds: number;
+  computed_date?: string;
+}
+
+/* ---------- Benchmark ---------- */
+export interface BenchmarkWeightItem {
+  sector_name: string;
+  weight_pct: number;
+  effective_date: string;
+  source: string;
+  fetched_at?: string;
+}
+
+export interface BenchmarkWeightsResponse {
+  benchmark_name: string;
+  benchmark_mstar_id?: string;
+  sectors: BenchmarkWeightItem[];
+  sector_count: number;
+  total_weight_pct: number;
+  last_fetched?: string;
 }

@@ -1,7 +1,7 @@
 "use client";
 
 /* ------------------------------------------------------------------ */
-/*  Fund Filter Bar -- search, category, tier, action filter controls  */
+/*  Fund Filter Bar -- search, category, action filter controls        */
 /* ------------------------------------------------------------------ */
 
 interface FundFilterBarProps {
@@ -9,16 +9,15 @@ interface FundFilterBarProps {
   onSearchChange: (value: string) => void;
   categoryFilter: string;
   onCategoryChange: (value: string) => void;
-  tierFilter: string;
-  onTierChange: (value: string) => void;
   actionFilter: string;
   onActionChange: (value: string) => void;
   categories: string[];
   displayCount: number;
   totalCount: number;
+  matrixSelected?: boolean;
+  onClearMatrix?: () => void;
 }
 
-const TIER_OPTIONS = ["CORE", "QUALITY", "WATCH", "CAUTION", "EXIT"] as const;
 const ACTION_OPTIONS = [
   "ACCUMULATE",
   "HOLD",
@@ -41,13 +40,13 @@ export default function FundFilterBar({
   onSearchChange,
   categoryFilter,
   onCategoryChange,
-  tierFilter,
-  onTierChange,
   actionFilter,
   onActionChange,
   categories,
   displayCount,
   totalCount,
+  matrixSelected = false,
+  onClearMatrix,
 }: FundFilterBarProps) {
   return (
     <div className="bg-white rounded-xl border border-slate-200 p-4 mb-4">
@@ -76,20 +75,6 @@ export default function FundFilterBar({
         </select>
 
         <select
-          value={tierFilter}
-          onChange={(e) => onTierChange(e.target.value)}
-          aria-label="Filter by tier"
-          className={selectClasses}
-        >
-          <option value="">All Tiers</option>
-          {TIER_OPTIONS.map((tier) => (
-            <option key={tier} value={tier}>
-              {tier}
-            </option>
-          ))}
-        </select>
-
-        <select
           value={actionFilter}
           onChange={(e) => onActionChange(e.target.value)}
           aria-label="Filter by action"
@@ -102,6 +87,25 @@ export default function FundFilterBar({
             </option>
           ))}
         </select>
+
+        {matrixSelected && onClearMatrix && (
+          <button
+            onClick={onClearMatrix}
+            className="bg-white text-slate-600 font-medium px-3 py-2 rounded-lg border border-slate-200 hover:bg-slate-50 transition-colors text-sm flex items-center gap-1.5"
+            aria-label="Clear matrix cell selection"
+          >
+            <svg
+              className="w-3.5 h-3.5"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+              strokeWidth={2}
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+            Clear matrix selection
+          </button>
+        )}
 
         <div className="ml-auto text-sm text-slate-500">
           Showing{" "}
