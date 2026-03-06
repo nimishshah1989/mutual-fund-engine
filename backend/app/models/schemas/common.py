@@ -8,7 +8,6 @@ error detail structure, and domain-specific enums.
 Every API endpoint returns an ApiResponse[T] — no raw dicts, no ad-hoc shapes.
 """
 
-from __future__ import annotations
 import enum
 import math
 from typing import Any, Generic, TypeVar

@@ -5,7 +5,6 @@ Endpoints for triggering Morningstar data ingestion and viewing
 ingestion run history. These are admin-only operations in production.
 """
 
-from __future__ import annotations
 from uuid import UUID
 
 import structlog

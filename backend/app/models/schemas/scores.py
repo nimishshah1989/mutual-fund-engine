@@ -7,8 +7,6 @@ Covers request bodies, response models, and score detail breakdowns.
 v2: Removed CRS-related schemas. Added shortlist and recommendation schemas.
 """
 
-from __future__ import annotations
-
 import enum
 from datetime import date, datetime
 from typing import Any, Optional

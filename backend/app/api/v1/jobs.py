@@ -6,8 +6,6 @@ These are NOT scheduled — they are invoked by the FM (Fund Manager)
 or admin when manual recomputation is needed.
 """
 
-from __future__ import annotations
-
 from typing import Any
 
 import structlog

@@ -5,7 +5,6 @@ FM sector signal endpoints.
 v2: Added bulk update, sectors list, and signal change history.
 """
 
-from __future__ import annotations
 
 from datetime import date
 from typing import Optional

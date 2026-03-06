@@ -5,7 +5,6 @@ Pydantic request/response schemas for the data ingestion endpoints.
 Covers the trigger request, batch result summary, and ingestion log history.
 """
 
-from __future__ import annotations
 from datetime import datetime
 from uuid import UUID
 

@@ -9,8 +9,6 @@ Score computation and category listing endpoints.
 Read/query endpoints (overview, shortlist, detail) are in scores_read.py.
 """
 
-from __future__ import annotations
-
 import structlog
 from fastapi import APIRouter, Depends, Request
 from sqlalchemy import distinct, select

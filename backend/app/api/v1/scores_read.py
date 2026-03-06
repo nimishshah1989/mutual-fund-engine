@@ -9,7 +9,6 @@ Score read/query endpoints:
 Computation endpoints (POST /compute, GET /categories) are in scores.py.
 """
 
-from __future__ import annotations
 
 import re
 from typing import Any, Optional

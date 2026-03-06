@@ -5,7 +5,6 @@ Pydantic schemas for Fund Manager sector signal operations.
 v2: Added bulk update schemas and signal change history.
 """
 
-from __future__ import annotations
 from datetime import date, datetime
 from typing import Optional
 from uuid import UUID
