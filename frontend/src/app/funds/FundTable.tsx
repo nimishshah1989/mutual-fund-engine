@@ -93,6 +93,11 @@ export default function FundTable({
                   >
                     {fund.fund_name ?? fund.mstar_id}
                   </Link>
+                  {fund.fund_name && (
+                    <span className="block text-[11px] text-slate-400 font-mono">
+                      {fund.mstar_id}
+                    </span>
+                  )}
                 </td>
                 <td className="px-4 py-3 text-sm text-slate-500 max-w-[200px] truncate">
                   {fund.category_name ?? "--"}

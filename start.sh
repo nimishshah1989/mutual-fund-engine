@@ -39,7 +39,7 @@ done
 
 echo "[mf-engine] Starting Next.js frontend on 0.0.0.0:3000..."
 cd /app/frontend
-HOSTNAME="0.0.0.0" PORT=3000 node server.js &
+HOSTNAME="0.0.0.0" PORT=3000 BACKEND_URL="http://127.0.0.1:8000" node server.js &
 
 NEXTJS_PID=$!
 
