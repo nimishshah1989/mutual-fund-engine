@@ -2,7 +2,6 @@
 
 import Link from "next/link";
 import type { FundScoreOverview } from "@/types/api";
-import TierBadge from "@/components/TierBadge";
 import ActionBadge from "@/components/ActionBadge";
 import ScoreCell from "./ScoreCell";
 import DataCompletenessBar from "./DataCompletenessBar";
@@ -115,7 +114,7 @@ export default function FundTable({
                 Matrix
               </th>
               <th className="px-4 py-3 text-center text-xs font-semibold text-slate-400 uppercase tracking-wider">
-                Tier / Action
+                Action
               </th>
               <th
                 onClick={() => onSort("qfs_rank")}
@@ -196,10 +195,7 @@ export default function FundTable({
 
                     return (
                       <div className="flex flex-col items-center gap-0.5">
-                        <div className="flex items-center justify-center gap-1.5">
-                          <TierBadge tier={fund.tier ?? "--"} />
-                          <ActionBadge action={fund.action ?? "--"} />
-                        </div>
+                        <ActionBadge action={fund.action ?? "--"} />
                         {wasOverridden && (
                           <span
                             title={fund.override_reason ?? "Override applied"}

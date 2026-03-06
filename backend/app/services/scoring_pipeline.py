@@ -101,9 +101,11 @@ class ScoringPipeline:
                     rank, total_in_category
                 )
 
-            # Compute FMS percentiles
+            # Compute FMS percentiles using raw_fsas (not normalized)
+            # Raw FSAS is the actual alignment quality — using normalized
+            # would double-normalize and mask absolute alignment direction
             fms_percentiles = self._compute_fms_percentiles(
-                fund_ids, fsas_lookup
+                fund_ids, raw_fsas_lookup
             )
 
             # Load fund metadata for overrides
@@ -235,26 +237,46 @@ class ScoringPipeline:
     def _compute_fms_percentiles(
         self,
         fund_ids: list[str],
-        fms_lookup: dict[str, float],
+        raw_fsas_lookup: dict[str, Optional[float]],
     ) -> dict[str, float]:
-        """Compute FMS percentile ranks within the fund set."""
-        # Build sorted list of (mstar_id, fms_value)
+        """
+        Compute FMS percentile ranks within the fund set using raw FSAS.
+
+        Uses raw (un-normalized) FSAS so the percentile reflects actual
+        alignment quality, not a min-max-then-percentile double normalization.
+
+        Absolute quality gate: funds with negative raw_fsas (net misaligned
+        with FM signals) are capped at the LOW boundary (33.33). A fund
+        whose sector allocation is net-contrary to FM signals should never
+        land in HIGH or MID FMS, regardless of relative rank.
+        """
+        # Build sorted list of (mstar_id, raw_fsas_value) — exclude None
         scored_funds = [
-            (mid, fms_lookup.get(mid, 0.0))
+            (mid, raw_fsas_lookup[mid])
             for mid in fund_ids
-            if mid in fms_lookup
+            if mid in raw_fsas_lookup and raw_fsas_lookup[mid] is not None
         ]
         if not scored_funds:
             return {mid: 50.0 for mid in fund_ids}
 
-        scored_funds.sort(key=lambda x: x[1], reverse=True)
+        scored_funds.sort(key=lambda x: x[1], reverse=True)  # type: ignore[arg-type]
         total = len(scored_funds)
 
-        percentiles: dict[str, float] = {}
-        for rank, (mstar_id, _fms) in enumerate(scored_funds, start=1):
-            percentiles[mstar_id] = self._compute_percentile(rank, total)
+        # FMS percentile cap for negative alignment — matches LOW_UPPER
+        # from default matrix config (33.33)
+        NEGATIVE_ALIGNMENT_CAP = 33.33
 
-        # Funds without FMS get midpoint
+        percentiles: dict[str, float] = {}
+        for rank, (mstar_id, raw_value) in enumerate(scored_funds, start=1):
+            pctl = self._compute_percentile(rank, total)
+
+            # Absolute quality gate: negative raw_fsas → force LOW column
+            if raw_value < 0:  # type: ignore[operator]
+                pctl = min(pctl, NEGATIVE_ALIGNMENT_CAP)
+
+            percentiles[mstar_id] = pctl
+
+        # Funds without FMS data get midpoint
         for mid in fund_ids:
             if mid not in percentiles:
                 percentiles[mid] = 50.0
