@@ -186,6 +186,90 @@ async def refresh_pulse(
 
 
 @router.post(
+    "/diagnose",
+    response_model=ApiResponse[dict],
+    summary="Diagnostic: test NAV fetch pipeline synchronously",
+)
+@limiter.limit(RATE_COMPUTE)
+async def diagnose_pulse(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+) -> ApiResponse[dict]:
+    """Run a quick diagnostic of the pulse pipeline and return results/errors."""
+    import traceback
+
+    results: dict = {}
+
+    # Step 1: Check fund_master has amfi_codes
+    try:
+        from sqlalchemy import func, select
+        from app.models.db.fund_master import FundMaster
+
+        total_q = await db.execute(select(func.count(FundMaster.mstar_id)))
+        total = total_q.scalar() or 0
+        amfi_q = await db.execute(
+            select(func.count(FundMaster.mstar_id)).where(
+                FundMaster.amfi_code.isnot(None),
+                FundMaster.amfi_code != "",
+            )
+        )
+        with_amfi = amfi_q.scalar() or 0
+        results["fund_master"] = {"total": total, "with_amfi_code": with_amfi}
+    except Exception as exc:
+        results["fund_master"] = {"error": f"{type(exc).__name__}: {exc}"}
+
+    # Step 2: Test AMFI bulk file download
+    try:
+        import httpx
+
+        async with httpx.AsyncClient(follow_redirects=True, timeout=15) as client:
+            resp = await client.get("https://www.amfiindia.com/spages/NAVAll.txt")
+            lines = resp.text.strip().split("\n")
+            results["amfi_bulk_file"] = {
+                "status_code": resp.status_code,
+                "total_lines": len(lines),
+                "sample_line": lines[2] if len(lines) > 2 else "empty",
+            }
+    except Exception as exc:
+        results["amfi_bulk_file"] = {"error": f"{type(exc).__name__}: {exc}"}
+
+    # Step 3: Test yfinance
+    try:
+        import asyncio
+        import yfinance as yf
+
+        loop = asyncio.get_running_loop()
+        df = await loop.run_in_executor(
+            None, lambda: yf.download("^NSEI", period="5d", progress=False)
+        )
+        results["yfinance"] = {
+            "rows": len(df),
+            "columns": list(str(c) for c in df.columns),
+        }
+    except Exception as exc:
+        results["yfinance"] = {"error": f"{type(exc).__name__}: {exc}", "tb": traceback.format_exc()[-500:]}
+
+    # Step 4: Test mftool (single fund)
+    try:
+        import asyncio
+        from mftool import Mftool
+
+        loop = asyncio.get_running_loop()
+        mf = Mftool()
+        nav_data = await loop.run_in_executor(
+            None, lambda: mf.get_scheme_historical_nav("119551", as_Dataframe=True)
+        )
+        results["mftool"] = {
+            "rows": len(nav_data) if nav_data is not None else 0,
+            "type": str(type(nav_data).__name__),
+        }
+    except Exception as exc:
+        results["mftool"] = {"error": f"{type(exc).__name__}: {exc}", "tb": traceback.format_exc()[-500:]}
+
+    return ApiResponse.ok(data=results)
+
+
+@router.post(
     "/backfill",
     response_model=ApiResponse[dict],
     summary="Trigger 3-year NAV backfill (one-time)",
