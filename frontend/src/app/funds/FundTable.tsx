@@ -25,13 +25,28 @@ const MATRIX_BADGE_STYLES: Record<string, string> = {
   LOW_LOW: "bg-red-100 text-red-700",
 };
 
+/** Matrix position → action as defined by the 3x3 decision matrix */
+const MATRIX_ACTIONS: Record<string, string> = {
+  HIGH_HIGH: "ACCUMULATE",
+  HIGH_MID: "ACCUMULATE",
+  HIGH_LOW: "HOLD",
+  MID_HIGH: "ACCUMULATE",
+  MID_MID: "HOLD",
+  MID_LOW: "REDUCE",
+  LOW_HIGH: "HOLD",
+  LOW_MID: "REDUCE",
+  LOW_LOW: "EXIT",
+};
+
 function MatrixBadge({ position }: { position: string | null | undefined }) {
   if (!position) {
     return <span className="text-sm text-slate-400 font-mono">&mdash;</span>;
   }
   const colorClasses = MATRIX_BADGE_STYLES[position] ?? "bg-slate-100 text-slate-600";
+  const matrixAction = MATRIX_ACTIONS[position];
   return (
     <span
+      title={matrixAction ? `Matrix: ${matrixAction}` : undefined}
       className={`inline-block rounded-full px-2 py-0.5 text-[11px] font-medium whitespace-nowrap ${colorClasses}`}
     >
       {position.replace("_", "/")}
@@ -172,18 +187,30 @@ export default function FundTable({
                   <MatrixBadge position={fund.matrix_position} />
                 </td>
                 <td className="px-4 py-3 text-center">
-                  <div className="flex items-center justify-center gap-1.5">
-                    <TierBadge tier={fund.tier ?? "--"} />
-                    <ActionBadge action={fund.action ?? "--"} />
-                    {fund.override_applied && (
-                      <span
-                        title={fund.override_reason ?? "Override applied"}
-                        className="inline-flex items-center rounded bg-amber-50 border border-amber-200 px-1 py-0.5 text-[10px] font-medium text-amber-700 cursor-help"
-                      >
-                        OVR
-                      </span>
-                    )}
-                  </div>
+                  {(() => {
+                    const matrixAction = fund.matrix_position
+                      ? MATRIX_ACTIONS[fund.matrix_position]
+                      : null;
+                    const wasOverridden =
+                      fund.override_applied && matrixAction && matrixAction !== fund.action;
+
+                    return (
+                      <div className="flex flex-col items-center gap-0.5">
+                        <div className="flex items-center justify-center gap-1.5">
+                          <TierBadge tier={fund.tier ?? "--"} />
+                          <ActionBadge action={fund.action ?? "--"} />
+                        </div>
+                        {wasOverridden && (
+                          <span
+                            title={fund.override_reason ?? "Override applied"}
+                            className="text-[10px] text-amber-600 cursor-help"
+                          >
+                            Matrix: {matrixAction} &rarr; {fund.action}
+                          </span>
+                        )}
+                      </div>
+                    );
+                  })()}
                 </td>
                 <td className="px-4 py-3 text-right text-sm font-mono tabular-nums text-slate-600">
                   {fund.qfs_rank != null ? (
