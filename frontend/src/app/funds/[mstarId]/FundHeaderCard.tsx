@@ -3,6 +3,7 @@
 import { formatScore } from "@/lib/formatters";
 import TierBadge from "@/components/TierBadge";
 import ActionBadge from "@/components/ActionBadge";
+import { categoryGroupColor } from "@/lib/colors";
 import type { RecommendationDetail, QFSDetail } from "@/types/api";
 
 interface FundHeaderCardProps {
@@ -29,9 +30,15 @@ export default function FundHeaderCard({
           <h2 className="text-xl font-semibold text-slate-800">
             {fundName ?? mstarId}
           </h2>
-          <p className="text-sm text-slate-500 mt-0.5">
+          <p className="text-sm text-slate-500 mt-0.5 inline-flex items-center gap-1.5">
             {mstarId}
-            {categoryName ? ` \u00b7 ${categoryName}` : ""}
+            {categoryName && (
+              <>
+                {" \u00b7 "}
+                <span className={`w-2 h-2 rounded-full flex-shrink-0 ${categoryGroupColor(categoryName)}`} />
+                {categoryName}
+              </>
+            )}
             {" \u00b7 Computed "}
             {qfs?.computed_date ?? "--"}
           </p>

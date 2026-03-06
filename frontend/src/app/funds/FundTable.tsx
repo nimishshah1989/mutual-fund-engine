@@ -6,6 +6,7 @@ import TierBadge from "@/components/TierBadge";
 import ActionBadge from "@/components/ActionBadge";
 import ScoreCell from "./ScoreCell";
 import DataCompletenessBar from "./DataCompletenessBar";
+import { categoryGroupColor } from "@/lib/colors";
 import type { SortField } from "./types";
 
 /* ------------------------------------------------------------------ */
@@ -100,7 +101,12 @@ export default function FundTable({
                   )}
                 </td>
                 <td className="px-4 py-3 text-sm text-slate-500 max-w-[200px] truncate">
-                  {fund.category_name ?? "--"}
+                  <span className="inline-flex items-center gap-1.5">
+                    {fund.category_name && (
+                      <span className={`w-2 h-2 rounded-full flex-shrink-0 ${categoryGroupColor(fund.category_name)}`} />
+                    )}
+                    {fund.category_name ?? "--"}
+                  </span>
                 </td>
                 <td className="px-4 py-3 text-right">
                   <ScoreCell value={fund.qfs} />

@@ -6,6 +6,7 @@ import type { ShortlistItem } from "@/types/api";
 import TierBadge from "@/components/TierBadge";
 import ActionBadge from "@/components/ActionBadge";
 import AlignmentDetail from "./AlignmentDetail";
+import { categoryGroupColor } from "@/lib/colors";
 import {
   type CategoryGroup,
   type ShortlistSortField,
@@ -254,10 +255,13 @@ export default function ShortlistTable({
                     colSpan={10}
                     className="bg-slate-50 px-4 py-2.5 font-semibold text-slate-600 text-sm border-b border-slate-200"
                   >
-                    {group.category}
+                    <span className="inline-flex items-center gap-2">
+                      <span className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${categoryGroupColor(group.category)}`} />
+                      {group.category}
                     <span className="ml-2 text-xs font-normal text-slate-400">
                       ({group.funds.length}{" "}
                       {group.funds.length === 1 ? "fund" : "funds"})
+                    </span>
                     </span>
                   </td>
                 </tr>,
