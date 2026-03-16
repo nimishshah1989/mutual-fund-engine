@@ -199,7 +199,7 @@ function StepItem({ number, children }: StepItemProps) {
       <span className="flex-shrink-0 w-6 h-6 rounded-full bg-teal-100 text-teal-700 flex items-center justify-center text-xs font-bold">
         {number}
       </span>
-      <p>{children}</p>
+      <div className="text-sm text-slate-600">{children}</div>
     </div>
   );
 }
