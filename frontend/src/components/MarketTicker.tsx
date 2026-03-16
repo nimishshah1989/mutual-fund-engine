@@ -5,7 +5,7 @@
  */
 export default function MarketTicker() {
   return (
-    <div className="flex items-center gap-6 text-xs">
+    <div className="flex items-center flex-wrap gap-3 lg:gap-6 text-xs">
       <div>
         <span className="text-slate-400">NIFTY 50</span>
         <span className="ml-1 font-mono font-semibold text-emerald-600">

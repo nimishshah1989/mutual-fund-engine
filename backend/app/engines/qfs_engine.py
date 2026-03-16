@@ -18,8 +18,9 @@ from datetime import date
 from typing import Any, Optional
 
 import structlog
+from decimal import Decimal, ROUND_HALF_UP
 
-from app.engines.base_engine import compute_data_completeness, min_max_normalise
+from app.engines.base_engine import compute_data_completeness, min_max_normalise, to_decimal, decimal_round
 from app.engines.qfs_metric_config import (
     ALL_HORIZONS,
     COMPLETENESS_THRESHOLD,
@@ -46,7 +47,7 @@ class QFSEngine:
         risk_stats_by_fund: dict[str, dict[str, Any]],
         performance_by_fund: dict[str, dict[str, Any]],
         category_name: str,
-        nifty_returns: Optional[dict[str, float]] = None,
+        nifty_returns: Optional[dict[str, Decimal]] = None,
     ) -> list[dict[str, Any]]:
         """
         Compute QFS for all funds in a category. Takes pre-loaded data (no DB access)
@@ -72,7 +73,7 @@ class QFSEngine:
 
         # Step 4: Build per-fund results with horizon scores and WFS
         fund_results: list[dict[str, Any]] = []
-        wfs_values: list[Optional[float]] = []
+        wfs_values: list[Optional[Decimal]] = []
         today = date.today()
 
         for fund_idx, mstar_id in enumerate(fund_ids):
@@ -86,10 +87,10 @@ class QFSEngine:
         # Step 6: Normalise WFS across category to get final QFS (0-100)
         normalised_qfs = min_max_normalise(wfs_values, higher_is_better=True)
         for idx, result in enumerate(fund_results):
-            raw_qfs = round(normalised_qfs[idx], 4) if normalised_qfs[idx] is not None else 0.0
+            raw_qfs = decimal_round(normalised_qfs[idx], 4) if normalised_qfs[idx] is not None else Decimal("0")
             completeness = result["data_completeness_pct"]
-            penalty_factor = min(1.0, completeness / COMPLETENESS_THRESHOLD)
-            result["qfs"] = round(raw_qfs * penalty_factor, 4)
+            penalty_factor = min(Decimal("1"), completeness / COMPLETENESS_THRESHOLD)
+            result["qfs"] = decimal_round(raw_qfs * penalty_factor, 4)
 
         logger.info(
             "qfs_compute_complete", category=category_name, fund_count=len(fund_results),
@@ -104,16 +105,16 @@ class QFSEngine:
         fund_ids: list[str],
         risk_stats: dict[str, dict[str, Any]],
         performance: dict[str, dict[str, Any]],
-        cat_avg: dict[str, Optional[float]],
-        nifty_returns: Optional[dict[str, float]] = None,
-    ) -> dict[str, dict[str, list[Optional[float]]]]:
+        cat_avg: dict[str, Optional[Decimal]],
+        nifty_returns: Optional[dict[str, Decimal]] = None,
+    ) -> dict[str, dict[str, list[Optional[Decimal]]]]:
         """Extract raw metric values for every fund x metric x horizon."""
-        raw: dict[str, dict[str, list[Optional[float]]]] = {}
+        raw: dict[str, dict[str, list[Optional[Decimal]]]] = {}
         for metric_name, config in METRIC_CONFIG.items():
             raw[metric_name] = {}
             horizons = config["horizons"]
             for horizon in ALL_HORIZONS:
-                vals: list[Optional[float]] = []
+                vals: list[Optional[Decimal]] = []
                 for mstar_id in fund_ids:
                     vals.append(self._extract_metric_value(
                         metric_name, horizon, horizons.get(horizon),
@@ -124,10 +125,10 @@ class QFSEngine:
         return raw
 
     def _normalise_all(
-        self, raw: dict[str, dict[str, list[Optional[float]]]],
-    ) -> dict[str, dict[str, list[Optional[float]]]]:
+        self, raw: dict[str, dict[str, list[Optional[Decimal]]]],
+    ) -> dict[str, dict[str, list[Optional[Decimal]]]]:
         """Normalise each metric x horizon within the peer group."""
-        norm: dict[str, dict[str, list[Optional[float]]]] = {}
+        norm: dict[str, dict[str, list[Optional[Decimal]]]] = {}
         for metric_name, config in METRIC_CONFIG.items():
             norm[metric_name] = {}
             higher = config["higher_is_better"]
@@ -140,16 +141,16 @@ class QFSEngine:
         fund_idx: int,
         mstar_id: str,
         fund_ids: list[str],
-        raw: dict[str, dict[str, list[Optional[float]]]],
-        norm: dict[str, dict[str, list[Optional[float]]]],
+        raw: dict[str, dict[str, list[Optional[Decimal]]]],
+        norm: dict[str, dict[str, list[Optional[Decimal]]]],
         risk_stats: dict[str, dict[str, Any]],
         performance: dict[str, dict[str, Any]],
         total_must_have: int,
         today: date,
-    ) -> tuple[dict[str, Any], Optional[float]]:
+    ) -> tuple[dict[str, Any], Optional[Decimal]]:
         """Compute per-fund metric scores, horizon scores, and WFS."""
-        metric_scores: dict[str, dict[str, dict[str, Optional[float]]]] = {}
-        must_have_comp: dict[str, dict[str, Optional[float]]] = {}
+        metric_scores: dict[str, dict[str, dict[str, Optional[Decimal]]]] = {}
+        must_have_comp: dict[str, dict[str, Optional[Decimal]]] = {}
         missing: list[dict[str, Any]] = []
 
         for metric_name, config in METRIC_CONFIG.items():
@@ -170,7 +171,7 @@ class QFSEngine:
         horizon_scores = self._compute_horizon_scores(fund_idx, norm)
 
         # Compute WFS using only SCORING_HORIZONS
-        wfs_num, wfs_den, avail = 0.0, 0, 0
+        wfs_num = Decimal("0"); wfs_den = 0; avail = 0
         for h in SCORING_HORIZONS:
             w = HORIZON_WEIGHTS[h]
             s = horizon_scores.get(h)
@@ -178,7 +179,7 @@ class QFSEngine:
                 wfs_num += w * s
                 wfs_den += w
                 avail += 1
-        wfs_raw = round(wfs_num / wfs_den, 4) if wfs_den > 0 else None
+        wfs_raw = decimal_round(wfs_num / Decimal(wfs_den), 4) if wfs_den > 0 else None
 
         data_comp = compute_data_completeness(must_have_comp, total_possible=total_must_have)
         input_hash = hashlib.sha256(json.dumps({
@@ -190,7 +191,7 @@ class QFSEngine:
             "mstar_id": mstar_id, "computed_date": today,
             "score_1y": horizon_scores.get("1y"), "score_3y": horizon_scores.get("3y"),
             "score_5y": horizon_scores.get("5y"), "score_10y": horizon_scores.get("10y"),
-            "wfs_raw": wfs_raw, "qfs": 0.0,
+            "wfs_raw": wfs_raw, "qfs": Decimal("0"),
             "data_completeness_pct": data_comp,
             "missing_metrics": missing if missing else None,
             "available_horizons": avail, "metric_scores": metric_scores,
@@ -200,13 +201,13 @@ class QFSEngine:
         return result, wfs_raw
 
     def _compute_horizon_scores(
-        self, fund_idx: int, norm: dict[str, dict[str, list[Optional[float]]]],
-    ) -> dict[str, Optional[float]]:
+        self, fund_idx: int, norm: dict[str, dict[str, list[Optional[Decimal]]]],
+    ) -> dict[str, Optional[Decimal]]:
         """Compute per-horizon scores using two-tier weighted blend."""
-        scores: dict[str, Optional[float]] = {}
+        scores: dict[str, Optional[Decimal]] = {}
         for horizon in ALL_HORIZONS:
-            must_vals: list[float] = []
-            good_vals: list[float] = []
+            must_vals: list[Decimal] = []
+            good_vals: list[Decimal] = []
             for metric_name, config in METRIC_CONFIG.items():
                 val = norm[metric_name][horizon][fund_idx]
                 if val is None:
@@ -217,35 +218,35 @@ class QFSEngine:
                     good_vals.append(val)
 
             if must_vals and good_vals:
-                must_avg = sum(must_vals) / len(must_vals)
-                good_avg = sum(good_vals) / len(good_vals)
-                scores[horizon] = round(MUST_HAVE_WEIGHT * must_avg + GOOD_TO_HAVE_WEIGHT * good_avg, 4)
+                must_avg = sum(must_vals) / Decimal(len(must_vals))
+                good_avg = sum(good_vals) / Decimal(len(good_vals))
+                scores[horizon] = decimal_round(MUST_HAVE_WEIGHT * must_avg + GOOD_TO_HAVE_WEIGHT * good_avg, 4)
             elif must_vals:
-                scores[horizon] = round(sum(must_vals) / len(must_vals), 4)
+                scores[horizon] = decimal_round(sum(must_vals) / Decimal(len(must_vals)), 4)
             elif good_vals:
-                scores[horizon] = round(sum(good_vals) / len(good_vals) * GOOD_TO_HAVE_ONLY_CAP, 4)
+                scores[horizon] = decimal_round(sum(good_vals) / Decimal(len(good_vals)) * GOOD_TO_HAVE_ONLY_CAP, 4)
             else:
                 scores[horizon] = None
         return scores
 
     def _compute_category_avg_returns(
         self, fund_ids: list[str], performance: dict[str, dict[str, Any]],
-    ) -> dict[str, Optional[float]]:
+    ) -> dict[str, Optional[Decimal]]:
         """Compute average return per horizon — benchmark for category_alpha."""
         cols = {"1y": "return_1y", "3y": "return_3y", "5y": "return_5y", "10y": "return_10y"}
-        avg: dict[str, Optional[float]] = {}
+        avg: dict[str, Optional[Decimal]] = {}
         for h, col in cols.items():
-            vals = [float(performance[mid][col]) for mid in fund_ids
+            vals = [to_decimal(performance[mid][col]) for mid in fund_ids
                     if mid in performance and performance[mid].get(col) is not None]
-            avg[h] = sum(vals) / len(vals) if vals else None
+            avg[h] = sum(vals) / Decimal(len(vals)) if vals else None
         return avg
 
     def _extract_metric_value(
         self, metric_name: str, horizon: str, column_name: Optional[str],
         mstar_id: str, risk_stats: dict[str, dict[str, Any]],
-        performance: dict[str, dict[str, Any]], cat_avg: dict[str, Optional[float]],
-        nifty_returns: Optional[dict[str, float]] = None,
-    ) -> Optional[float]:
+        performance: dict[str, dict[str, Any]], cat_avg: dict[str, Optional[Decimal]],
+        nifty_returns: Optional[dict[str, Decimal]] = None,
+    ) -> Optional[Decimal]:
         """Extract a single metric value for one fund at one horizon."""
         config = METRIC_CONFIG[metric_name]
         if horizon not in config["horizons"]:
@@ -257,18 +258,18 @@ class QFSEngine:
                 return None
             data = (risk_stats if source == "risk_stats" else performance).get(mstar_id, {})
             val = data.get(column_name)
-            return float(val) if val is not None else None
+            return to_decimal(val) if val is not None else None
 
         if source == "computed" and metric_name == "category_alpha":
             fund_ret = performance.get(mstar_id, {}).get(f"return_{horizon}")
             avg = cat_avg.get(horizon)
             if fund_ret is not None and avg is not None:
-                return float(fund_ret) - avg
+                return to_decimal(fund_ret) - avg
 
         if source == "computed" and metric_name == "excess_return":
             fund_ret = performance.get(mstar_id, {}).get(f"return_{horizon}")
             nifty_ret = nifty_returns.get(horizon) if nifty_returns else None
             if fund_ret is not None and nifty_ret is not None:
-                return float(fund_ret) - float(nifty_ret)
+                return to_decimal(fund_ret) - to_decimal(nifty_ret)
 
         return None

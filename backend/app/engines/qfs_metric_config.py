@@ -12,6 +12,7 @@ Defines:
 
 from __future__ import annotations
 
+from decimal import Decimal, ROUND_HALF_UP
 from typing import Any, Optional
 
 ENGINE_VERSION = "2.0.0"
@@ -23,12 +24,12 @@ ALL_HORIZONS: list[str] = ["1y", "3y", "5y", "10y"]
 HORIZON_WEIGHTS: dict[str, int] = {"1y": 1, "3y": 2, "5y": 3}
 
 # Two-tier metric weighting within each horizon
-MUST_HAVE_WEIGHT: float = 0.75
-GOOD_TO_HAVE_WEIGHT: float = 0.25
-GOOD_TO_HAVE_ONLY_CAP: float = 0.5  # Cap when only good-to-have metrics present
+MUST_HAVE_WEIGHT = Decimal("0.75")
+GOOD_TO_HAVE_WEIGHT = Decimal("0.25")
+GOOD_TO_HAVE_ONLY_CAP = Decimal("0.5")  # Cap when only good-to-have metrics present
 
 # Minimum completeness threshold: funds below this get proportional QFS penalty
-COMPLETENESS_THRESHOLD: float = 60.0
+COMPLETENESS_THRESHOLD = Decimal("60")
 
 # Maps each metric to its DB columns, direction, and priority tier
 METRIC_CONFIG: dict[str, dict[str, Any]] = {
@@ -122,6 +123,9 @@ def count_must_have_horizons() -> int:
     return count
 
 
-def safe_round(value: Optional[float], decimals: int) -> Optional[float]:
-    """Round a value if not None."""
-    return round(value, decimals) if value is not None else None
+def safe_round(value: Optional[Decimal], decimals: int) -> Optional[Decimal]:
+    """Round a Decimal value if not None, using ROUND_HALF_UP."""
+    if value is None:
+        return None
+    quantizer = Decimal(10) ** -decimals
+    return value.quantize(quantizer, rounding=ROUND_HALF_UP)

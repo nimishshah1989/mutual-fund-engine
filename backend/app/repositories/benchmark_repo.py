@@ -8,6 +8,7 @@ and retrieval of benchmark sector weights (NIFTY 50 allocations).
 from __future__ import annotations
 
 from datetime import date, datetime, timezone
+from decimal import Decimal
 from typing import Optional
 
 import structlog
@@ -106,13 +107,13 @@ class BenchmarkRepository(BaseRepository[BenchmarkSectorWeight]):
 
     async def get_weights_as_dict(
         self, benchmark_name: str,
-    ) -> dict[str, float]:
+    ) -> dict[str, Decimal]:
         """
         Get latest weights as a simple {sector_name: weight_pct} dict.
         Used by the FMS engine for active weight calculations.
         """
         rows = await self.get_latest_weights(benchmark_name)
         return {
-            row.sector_name: float(row.weight_pct)
+            row.sector_name: row.weight_pct
             for row in rows
         }

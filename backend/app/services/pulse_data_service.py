@@ -13,7 +13,7 @@ Also provides get_nifty_returns() for QFS excess return computation.
 from __future__ import annotations
 
 from datetime import date, timedelta
-from decimal import Decimal
+from decimal import Decimal, ROUND_HALF_UP
 from typing import Any, Optional
 
 import structlog
@@ -53,7 +53,7 @@ class PulseDataService:
         self.benchmark_repo = BenchmarkHistoryRepository(session)
         self.snapshot_repo = PulseSnapshotRepository(session)
 
-    async def _load_signal_thresholds(self) -> tuple[float, float]:
+    async def _load_signal_thresholds(self) -> tuple[Decimal, Decimal]:
         """Load signal thresholds from engine_config, with defaults."""
         from app.models.db.engine_config import EngineConfig
 
@@ -64,10 +64,10 @@ class PulseDataService:
         row = result.scalar_one_or_none()
         if row and isinstance(row, dict):
             return (
-                float(row.get("strong_ow", 1.05)),
-                float(row.get("strong_uw", 0.95)),
+                Decimal(str(row.get("strong_ow", "1.05"))),
+                Decimal(str(row.get("strong_uw", "0.95"))),
             )
-        return (1.05, 0.95)
+        return (Decimal("1.05"), Decimal("0.95"))
 
     async def compute_all_snapshots(self) -> dict[str, Any]:
         """
@@ -216,10 +216,10 @@ class PulseDataService:
                 category_name=enrichment.get("category_name"),
                 period=snap.period,
                 snapshot_date=snap.snapshot_date,
-                ratio_return=_safe_float(snap.ratio_return),
-                fund_return=_safe_float(snap.fund_return),
-                nifty_return=_safe_float(snap.nifty_return),
-                excess_return=_safe_float(snap.excess_return),
+                ratio_return=_safe_decimal(snap.ratio_return),
+                fund_return=_safe_decimal(snap.fund_return),
+                nifty_return=_safe_decimal(snap.nifty_return),
+                excess_return=_safe_decimal(snap.excess_return),
                 signal=snap.signal,
                 qfs=enrichment.get("qfs"),
                 fm_score=enrichment.get("fm_score"),
@@ -271,7 +271,7 @@ class PulseDataService:
 
     async def get_nifty_returns(
         self, horizons: list[str] | None = None,
-    ) -> dict[str, Optional[float]]:
+    ) -> dict[str, Optional[Decimal]]:
         """
         Compute Nifty 50 returns for specified horizons (default: 1y, 3y, 5y).
         Returns annualized CAGR for 3y/5y, trailing 12mo % for 1y.
@@ -289,7 +289,7 @@ class PulseDataService:
             return {h: None for h in horizons}
 
         nifty_current = nifty_current_data["close_price"]
-        returns: dict[str, Optional[float]] = {}
+        returns: dict[str, Optional[Decimal]] = {}
 
         horizon_days = {"1y": 365, "3y": 1095, "5y": 1825, "10y": 3650}
 
@@ -309,18 +309,25 @@ class PulseDataService:
                 continue
 
             nifty_old = old_data["close_price"]
-            if nifty_old <= 0:
+            if nifty_old <= Decimal("0"):
                 returns[horizon] = None
                 continue
 
-            years = days / 365.0
-            if years <= 1:
+            years = Decimal(str(days)) / Decimal("365")
+            if years <= Decimal("1"):
                 # Simple return for 1y
-                returns[horizon] = round(((nifty_current / nifty_old) - 1) * 100, 4)
+                returns[horizon] = (
+                    (nifty_current / nifty_old - Decimal("1")) * Decimal("100")
+                ).quantize(Decimal("0.0001"), rounding=ROUND_HALF_UP)
             else:
                 # Annualized CAGR for multi-year horizons
-                cagr = ((nifty_current / nifty_old) ** (1.0 / years) - 1) * 100
-                returns[horizon] = round(cagr, 4)
+                # Decimal ** requires integer exponent; use float for fractional power
+                ratio = nifty_current / nifty_old
+                exponent = Decimal("1") / years
+                cagr_raw = Decimal(str(float(ratio) ** float(exponent))) - Decimal("1")
+                returns[horizon] = (cagr_raw * Decimal("100")).quantize(
+                    Decimal("0.0001"), rounding=ROUND_HALF_UP,
+                )
 
         return returns
 
@@ -364,7 +371,7 @@ class PulseDataService:
         )
         for row in qfs_result.all():
             if row.mstar_id in lookup:
-                lookup[row.mstar_id]["qfs"] = float(row.qfs) if row.qfs is not None else None
+                lookup[row.mstar_id]["qfs"] = row.qfs
 
         # Latest recommendations (tier, action, matrix position, fm_score)
         rec_subq = (
@@ -396,7 +403,7 @@ class PulseDataService:
                 lookup[row.mstar_id].update({
                     "tier": row.tier,
                     "action": row.action,
-                    "fm_score": float(row.fm_score) if row.fm_score is not None else None,
+                    "fm_score": row.fm_score,
                     "qfs_quadrant": row.matrix_row,
                     "fm_quadrant": row.matrix_col,
                 })
@@ -404,10 +411,10 @@ class PulseDataService:
         return lookup
 
 
-def _safe_float(val: Any) -> Optional[float]:
-    """Convert Decimal/numeric to float, None-safe."""
+def _safe_decimal(val: Any) -> Optional[Decimal]:
+    """Convert numeric to Decimal, None-safe. Preserves DB Decimal values."""
     if val is None:
         return None
     if isinstance(val, Decimal):
-        return float(val)
-    return float(val)
+        return val
+    return Decimal(str(val))

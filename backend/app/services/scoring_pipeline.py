@@ -14,6 +14,7 @@ Tier and action come from the 3x3 matrix, not QFS percentile alone.
 from __future__ import annotations
 
 from datetime import date
+from decimal import Decimal, ROUND_HALF_UP
 from typing import TYPE_CHECKING, Any, Optional
 
 import structlog
@@ -34,7 +35,7 @@ class ScoringPipeline:
 
     async def assign_matrix_recommendations(
         self,
-        benchmark_weights: Optional[dict[str, float]] = None,
+        benchmark_weights: Optional[dict[str, Decimal]] = None,
         trigger_event: str = "manual_compute",
     ) -> dict[str, Any]:
         """
@@ -66,14 +67,14 @@ class ScoringPipeline:
 
             # Load FMS scores for all funds in category
             fsas_records = await svc.score_repo.get_latest_fsas_by_mstar_ids(fund_ids)
-            fsas_lookup: dict[str, float] = {}
-            raw_fsas_lookup: dict[str, Optional[float]] = {}
-            avoid_lookup: dict[str, float] = {}
+            fsas_lookup: dict[str, Decimal] = {}
+            raw_fsas_lookup: dict[str, Optional[Decimal]] = {}
+            avoid_lookup: dict[str, Decimal] = {}
             for f in fsas_records:
-                fsas_lookup[f.mstar_id] = float(f.fsas) if f.fsas is not None else 0.0
-                raw_fsas_lookup[f.mstar_id] = float(f.raw_fsas) if f.raw_fsas is not None else None
+                fsas_lookup[f.mstar_id] = f.fsas if f.fsas is not None else Decimal("0")
+                raw_fsas_lookup[f.mstar_id] = f.raw_fsas
                 avoid_lookup[f.mstar_id] = (
-                    float(f.avoid_exposure_pct) if f.avoid_exposure_pct is not None else 0.0
+                    f.avoid_exposure_pct if f.avoid_exposure_pct is not None else Decimal("0")
                 )
 
             if fsas_lookup:
@@ -89,13 +90,13 @@ class ScoringPipeline:
             # Sort by QFS descending for rank assignment
             sorted_qfs = sorted(
                 qfs_records,
-                key=lambda r: float(r.qfs) if r.qfs is not None else 0.0,
+                key=lambda r: r.qfs if r.qfs is not None else Decimal("0"),
                 reverse=True,
             )
             total_in_category = len(sorted_qfs)
 
             # Compute QFS percentiles
-            qfs_percentiles: dict[str, float] = {}
+            qfs_percentiles: dict[str, Decimal] = {}
             for rank, record in enumerate(sorted_qfs, start=1):
                 qfs_percentiles[record.mstar_id] = self._compute_percentile(
                     rank, total_in_category
@@ -113,9 +114,9 @@ class ScoringPipeline:
 
             for rank, record in enumerate(sorted_qfs, start=1):
                 mstar_id = record.mstar_id
-                qfs_value = float(record.qfs) if record.qfs is not None else 0.0
+                qfs_value = record.qfs if record.qfs is not None else Decimal("0")
                 qfs_pctl = qfs_percentiles[mstar_id]
-                fms_pctl = fms_percentiles.get(mstar_id, 50.0)
+                fms_pctl = fms_percentiles.get(mstar_id, Decimal("50"))
                 fms_value = fsas_lookup.get(mstar_id)
 
                 # Matrix classification
@@ -123,12 +124,12 @@ class ScoringPipeline:
 
                 # Override checks
                 data_completeness = (
-                    float(record.data_completeness_pct)
-                    if record.data_completeness_pct is not None else 100.0
+                    record.data_completeness_pct
+                    if record.data_completeness_pct is not None else Decimal("100")
                 )
                 metadata = fund_metadata.get(mstar_id, {})
                 override_fund_data: dict[str, Any] = {
-                    "avoid_exposure_pct": avoid_lookup.get(mstar_id, 0.0),
+                    "avoid_exposure_pct": avoid_lookup.get(mstar_id, Decimal("0")),
                     "inception_date": metadata.get("inception_date"),
                     "data_completeness_pct": data_completeness,
                     "reference_date": today,
@@ -160,12 +161,12 @@ class ScoringPipeline:
                     "qfs": qfs_value,
                     "fsas": fms_value,
                     "qfs_rank": rank,
-                    "category_rank_pct": round(qfs_pctl, 2),
+                    "category_rank_pct": qfs_pctl.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP),
                     "is_shortlisted": False,
                     # v3 matrix fields — fm_score stores actual raw FSAS (not normalized)
                     "fm_score": raw_fsas_lookup.get(mstar_id),
-                    "fm_score_percentile": round(fms_pctl, 2),
-                    "qfs_percentile": round(qfs_pctl, 2),
+                    "fm_score_percentile": fms_pctl.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP),
+                    "qfs_percentile": qfs_pctl.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP),
                     "matrix_row": classification["matrix_row"],
                     "matrix_col": classification["matrix_col"],
                     "matrix_position": classification["matrix_position"],
@@ -224,21 +225,21 @@ class ScoringPipeline:
 
         return result
 
-    def _compute_percentile(self, rank: int, total: int) -> float:
+    def _compute_percentile(self, rank: int, total: int) -> Decimal:
         """Compute percentile from rank and total. Compresses small categories."""
         if total <= 1:
-            return 50.0
-        percentile = (total - rank) / (total - 1) * 100.0
+            return Decimal("50")
+        percentile = Decimal(total - rank) / Decimal(total - 1) * Decimal("100")
         # Compress to [20, 80] for tiny categories
         if total < 5:
-            percentile = 20.0 + (percentile / 100.0) * 60.0
+            percentile = Decimal("20") + (percentile / Decimal("100")) * Decimal("60")
         return percentile
 
     def _compute_fms_percentiles(
         self,
         fund_ids: list[str],
-        raw_fsas_lookup: dict[str, Optional[float]],
-    ) -> dict[str, float]:
+        raw_fsas_lookup: dict[str, Optional[Decimal]],
+    ) -> dict[str, Decimal]:
         """
         Compute FMS percentile ranks within the fund set using raw FSAS.
 
@@ -257,21 +258,21 @@ class ScoringPipeline:
             if mid in raw_fsas_lookup and raw_fsas_lookup[mid] is not None
         ]
         if not scored_funds:
-            return {mid: 50.0 for mid in fund_ids}
+            return {mid: Decimal("50") for mid in fund_ids}
 
         scored_funds.sort(key=lambda x: x[1], reverse=True)  # type: ignore[arg-type]
         total = len(scored_funds)
 
         # FMS percentile cap for negative alignment — matches LOW_UPPER
         # from default matrix config (33.33)
-        NEGATIVE_ALIGNMENT_CAP = 33.33
+        NEGATIVE_ALIGNMENT_CAP = Decimal("33.33")
 
-        percentiles: dict[str, float] = {}
+        percentiles: dict[str, Decimal] = {}
         for rank, (mstar_id, raw_value) in enumerate(scored_funds, start=1):
             pctl = self._compute_percentile(rank, total)
 
             # Absolute quality gate: negative raw_fsas → force LOW column
-            if raw_value < 0:  # type: ignore[operator]
+            if raw_value < Decimal("0"):  # type: ignore[operator]
                 pctl = min(pctl, NEGATIVE_ALIGNMENT_CAP)
 
             percentiles[mstar_id] = pctl
@@ -279,7 +280,7 @@ class ScoringPipeline:
         # Funds without FMS data get midpoint
         for mid in fund_ids:
             if mid not in percentiles:
-                percentiles[mid] = 50.0
+                percentiles[mid] = Decimal("50")
 
         return percentiles
 

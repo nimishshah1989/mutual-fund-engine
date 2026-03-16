@@ -65,7 +65,7 @@ class NavHistoryRepository(BaseRepository[NavHistory]):
         row = result.first()
         if row is None:
             return None
-        return {"nav_date": row.nav_date, "nav": float(row.nav)}
+        return {"nav_date": row.nav_date, "nav": row.nav}
 
     async def get_latest_navs_bulk(
         self, mstar_ids: list[str],
@@ -92,7 +92,7 @@ class NavHistoryRepository(BaseRepository[NavHistory]):
             )
         )
         return {
-            row.mstar_id: {"nav_date": row.nav_date, "nav": float(row.nav)}
+            row.mstar_id: {"nav_date": row.nav_date, "nav": row.nav}
             for row in result.all()
         }
 
@@ -122,7 +122,7 @@ class NavHistoryRepository(BaseRepository[NavHistory]):
             )
         )
         return {
-            row.mstar_id: {"nav_date": row.nav_date, "nav": float(row.nav)}
+            row.mstar_id: {"nav_date": row.nav_date, "nav": row.nav}
             for row in result.all()
         }
 

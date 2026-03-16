@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import enum
 from datetime import date
+from decimal import Decimal
 from typing import Any, Optional
 
 from pydantic import BaseModel, Field
@@ -51,15 +52,15 @@ class PulseFundItem(BaseModel):
     snapshot_date: Optional[date] = None
 
     # Ratio return data
-    ratio_return: Optional[float] = Field(None, description="Ratio return %")
-    fund_return: Optional[float] = Field(None, description="Fund absolute return %")
-    nifty_return: Optional[float] = Field(None, description="Nifty 50 return %")
-    excess_return: Optional[float] = Field(None, description="Fund - Nifty return %")
+    ratio_return: Optional[Decimal] = Field(None, description="Ratio return %")
+    fund_return: Optional[Decimal] = Field(None, description="Fund absolute return %")
+    nifty_return: Optional[Decimal] = Field(None, description="Nifty 50 return %")
+    excess_return: Optional[Decimal] = Field(None, description="Fund - Nifty return %")
     signal: Optional[str] = Field(None, description="STRONG_OW / OVERWEIGHT / NEUTRAL / UNDERWEIGHT / STRONG_UW")
 
     # Score context (enriched from QFS/recommendation tables)
-    qfs: Optional[float] = Field(None, description="QFS score 0-100")
-    fm_score: Optional[float] = Field(None, description="FM alignment score 0-100")
+    qfs: Optional[Decimal] = Field(None, description="QFS score 0-100")
+    fm_score: Optional[Decimal] = Field(None, description="FM alignment score 0-100")
     qfs_quadrant: Optional[str] = Field(None, description="HIGH / MID / LOW")
     fm_quadrant: Optional[str] = Field(None, description="HIGH / MID / LOW")
     tier: Optional[str] = Field(None, description="CORE / QUALITY / WATCH / CAUTION / EXIT")
@@ -70,7 +71,7 @@ class PulseCategorySummary(BaseModel):
     """Signal distribution for one SEBI category."""
     category_name: str
     fund_count: int = 0
-    avg_ratio_return: float = 0.0
+    avg_ratio_return: Decimal = Decimal("0")
     signals: dict[str, int] = Field(default_factory=dict, description="Signal -> count mapping")
 
 

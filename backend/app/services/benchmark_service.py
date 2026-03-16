@@ -15,6 +15,7 @@ Responsibilities:
 from __future__ import annotations
 
 from datetime import date, datetime, timezone
+from decimal import Decimal, ROUND_HALF_UP
 from typing import Any, Optional
 
 import structlog
@@ -23,7 +24,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.repositories.benchmark_repo import BenchmarkRepository
 from app.services.ingestion_mappers import SECTOR_FIELD_MAP
 from app.services.morningstar_fetcher import MorningstarFetcher
-from app.services.morningstar_parser import safe_float
+from app.services.morningstar_parser import safe_decimal
 
 logger = structlog.get_logger(__name__)
 
@@ -79,7 +80,7 @@ class BenchmarkService:
         records: list[dict[str, Any]] = []
 
         for xml_tag, sector_name in SECTOR_FIELD_MAP.items():
-            weight = safe_float(raw_data.get(xml_tag))
+            weight = safe_decimal(raw_data.get(xml_tag))
             if weight is not None:
                 records.append({
                     "benchmark_name": benchmark_name,
@@ -125,7 +126,7 @@ class BenchmarkService:
 
     async def get_latest_weights(
         self, benchmark_name: str = "NIFTY 50",
-    ) -> dict[str, float]:
+    ) -> dict[str, Decimal]:
         """Get latest weights as {sector_name: weight_pct} dict."""
         return await self.repo.get_weights_as_dict(benchmark_name)
 
@@ -137,7 +138,7 @@ class BenchmarkService:
         return [
             {
                 "sector_name": row.sector_name,
-                "weight_pct": float(row.weight_pct),
+                "weight_pct": row.weight_pct,
                 "effective_date": str(row.effective_date),
                 "source": row.source,
                 "fetched_at": row.fetched_at.isoformat() if row.fetched_at else None,
@@ -185,7 +186,7 @@ class BenchmarkService:
         benchmark_mstar_id: str,
         benchmark_name: str = "NIFTY 50",
         max_age_days: int = 45,
-    ) -> dict[str, float]:
+    ) -> dict[str, Decimal]:
         """
         Get benchmark weights, auto-refreshing if stale.
         Called by the pipeline before FMS computation.

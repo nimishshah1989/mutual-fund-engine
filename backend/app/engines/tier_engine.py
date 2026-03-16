@@ -24,6 +24,7 @@ Hard Override Rules (can only DOWNGRADE, never upgrade):
 from __future__ import annotations
 
 from datetime import date, timedelta
+from decimal import Decimal
 from typing import Any, Optional
 
 import structlog
@@ -36,11 +37,11 @@ class TierEngine:
 
     # Percentile-based tier thresholds — percentile >= threshold → assigned that tier
     # Ordered highest first. Below 20 → EXIT.
-    TIER_PERCENTILE_THRESHOLDS: list[tuple[str, float]] = [
-        ("CORE", 90.0),
-        ("QUALITY", 70.0),
-        ("WATCH", 40.0),
-        ("CAUTION", 20.0),
+    TIER_PERCENTILE_THRESHOLDS: list[tuple[str, Decimal]] = [
+        ("CORE", Decimal("90")),
+        ("QUALITY", Decimal("70")),
+        ("WATCH", Decimal("40")),
+        ("CAUTION", Decimal("20")),
     ]
 
     # Tier → recommended action (simplified 4-action system)
@@ -62,12 +63,12 @@ class TierEngine:
     }
 
     # Override thresholds
-    AVOID_EXPOSURE_THRESHOLD: float = 25.0  # percentage
+    AVOID_EXPOSURE_THRESHOLD: Decimal = Decimal("25")
     MANAGER_TENURE_MONTHS: int = 12
-    DATA_COMPLETENESS_THRESHOLD: float = 60.0  # percentage
+    DATA_COMPLETENESS_THRESHOLD: Decimal = Decimal("60")
     FUND_AGE_MONTHS: int = 36
 
-    def assign_tier_by_percentile(self, percentile: float) -> str:
+    def assign_tier_by_percentile(self, percentile: Decimal) -> str:
         """Assign tier based on QFS percentile rank (0-100) within category."""
         for tier_name, threshold in self.TIER_PERCENTILE_THRESHOLDS:
             if percentile >= threshold:
@@ -112,7 +113,7 @@ class TierEngine:
         current_rank = self.TIER_RANK.get(tier, 4)
 
         # Rule 1: AVOID exposure > 25% → force to CAUTION minimum
-        avoid_exposure = fund_data.get("avoid_exposure_pct", 0.0)
+        avoid_exposure = fund_data.get("avoid_exposure_pct", Decimal("0"))
         if avoid_exposure > self.AVOID_EXPOSURE_THRESHOLD:
             caution_rank = self.TIER_RANK["CAUTION"]
             if current_rank < caution_rank:
@@ -144,7 +145,7 @@ class TierEngine:
                     )
 
         # Rule 3: Data completeness < 60% → force to WATCH minimum + flag
-        data_completeness = fund_data.get("data_completeness_pct", 100.0)
+        data_completeness = fund_data.get("data_completeness_pct", Decimal("100"))
         if data_completeness < self.DATA_COMPLETENESS_THRESHOLD:
             watch_rank = self.TIER_RANK["WATCH"]
             if current_rank < watch_rank:
@@ -204,11 +205,11 @@ class TierEngine:
         return final_tier, final_action, override_applied, override_reason, override_flag
 
     def generate_rationale(
-        self, tier: str, action: str, qfs: float, percentile: float,
-        fsas: Optional[float], override_reason: Optional[str],
+        self, tier: str, action: str, qfs: Decimal, percentile: Decimal,
+        fsas: Optional[Decimal], override_reason: Optional[str],
         is_shortlisted: bool = False,
         matrix_position: Optional[str] = None,
-        fms_percentile: Optional[float] = None,
+        fms_percentile: Optional[Decimal] = None,
     ) -> str:
         """Generate a human-readable rationale for the tier/action assignment."""
         parts: list[str] = []

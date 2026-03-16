@@ -16,6 +16,7 @@ Handles Layer 2 scoring:
 from __future__ import annotations
 
 from datetime import date
+from decimal import Decimal
 from typing import Any, Optional
 
 import structlog
@@ -42,7 +43,7 @@ class FSASScorer:
 
     async def compute_for_all_funds(
         self,
-        benchmark_weights: Optional[dict[str, float]] = None,
+        benchmark_weights: Optional[dict[str, Decimal]] = None,
         trigger_event: str = "manual_compute",
     ) -> dict[str, Any]:
         """
@@ -110,7 +111,7 @@ class FSASScorer:
     async def compute_for_category(
         self,
         category_name: str,
-        benchmark_weights: Optional[dict[str, float]] = None,
+        benchmark_weights: Optional[dict[str, Decimal]] = None,
         trigger_event: str = "manual_compute",
     ) -> dict[str, Any]:
         """Compute FMS for all eligible funds in a single category."""
@@ -188,7 +189,7 @@ class FSASScorer:
 
     async def compute_for_all_categories(
         self,
-        benchmark_weights: Optional[dict[str, float]] = None,
+        benchmark_weights: Optional[dict[str, Decimal]] = None,
         trigger_event: str = "scheduled_recompute",
     ) -> list[dict[str, Any]]:
         """Compute FMS for every category that has eligible funds."""
@@ -209,7 +210,7 @@ class FSASScorer:
 
     async def compute_for_shortlisted(
         self,
-        benchmark_weights: Optional[dict[str, float]] = None,
+        benchmark_weights: Optional[dict[str, Decimal]] = None,
         trigger_event: str = "manual_compute",
     ) -> dict[str, Any]:
         """

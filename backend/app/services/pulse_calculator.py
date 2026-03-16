@@ -21,6 +21,7 @@ Signal thresholds (configurable via engine_config):
 from __future__ import annotations
 
 from datetime import date, timedelta
+from decimal import Decimal, ROUND_HALF_UP
 from typing import Any, Optional
 
 import structlog
@@ -28,8 +29,8 @@ import structlog
 logger = structlog.get_logger(__name__)
 
 # Default signal thresholds (overridden by engine_config.pulse_signal_thresholds)
-DEFAULT_STRONG_OW: float = 1.05
-DEFAULT_STRONG_UW: float = 0.95
+DEFAULT_STRONG_OW = Decimal("1.05")
+DEFAULT_STRONG_UW = Decimal("0.95")
 
 # Period definitions: name -> calendar days to look back
 PULSE_PERIODS: dict[str, int] = {
@@ -46,11 +47,11 @@ DATE_TOLERANCE_DAYS: int = 5
 
 
 def compute_ratio_return(
-    nav_current: float,
-    nav_old: float,
-    nifty_current: float,
-    nifty_old: float,
-) -> dict[str, float]:
+    nav_current: Decimal,
+    nav_old: Decimal,
+    nifty_current: Decimal,
+    nifty_old: Decimal,
+) -> dict[str, Decimal]:
     """
     Compute ratio return and component returns for a single fund × period.
 
@@ -58,41 +59,45 @@ def compute_ratio_return(
         dict with ratio_current, ratio_old, ratio_return,
         fund_return, nifty_return, excess_return
     """
-    ratio_current = nav_current / nifty_current
-    ratio_old = nav_old / nifty_old
-    ratio_return = ((ratio_current / ratio_old) - 1) * 100
-    fund_return = ((nav_current / nav_old) - 1) * 100
-    nifty_return = ((nifty_current / nifty_old) - 1) * 100
-    excess_return = fund_return - nifty_return
+    _100 = Decimal("100")
+    _6_places = Decimal("0.000001")
+    _4_places = Decimal("0.0001")
+
+    ratio_current = (nav_current / nifty_current).quantize(_6_places, rounding=ROUND_HALF_UP)
+    ratio_old = (nav_old / nifty_old).quantize(_6_places, rounding=ROUND_HALF_UP)
+    ratio_return = (((ratio_current / ratio_old) - 1) * _100).quantize(_4_places, rounding=ROUND_HALF_UP)
+    fund_return = (((nav_current / nav_old) - 1) * _100).quantize(_4_places, rounding=ROUND_HALF_UP)
+    nifty_return = (((nifty_current / nifty_old) - 1) * _100).quantize(_4_places, rounding=ROUND_HALF_UP)
+    excess_return = (fund_return - nifty_return).quantize(_4_places, rounding=ROUND_HALF_UP)
 
     return {
-        "ratio_current": round(ratio_current, 6),
-        "ratio_old": round(ratio_old, 6),
-        "ratio_return": round(ratio_return, 4),
-        "fund_return": round(fund_return, 4),
-        "nifty_return": round(nifty_return, 4),
-        "excess_return": round(excess_return, 4),
+        "ratio_current": ratio_current,
+        "ratio_old": ratio_old,
+        "ratio_return": ratio_return,
+        "fund_return": fund_return,
+        "nifty_return": nifty_return,
+        "excess_return": excess_return,
     }
 
 
 def classify_signal(
-    ratio_return: float,
-    strong_ow: float = DEFAULT_STRONG_OW,
-    strong_uw: float = DEFAULT_STRONG_UW,
+    ratio_return: Decimal,
+    strong_ow: Decimal = DEFAULT_STRONG_OW,
+    strong_uw: Decimal = DEFAULT_STRONG_UW,
 ) -> str:
     """
     Classify a ratio return into a signal.
 
     Uses ratio_period = 1 + (ratio_return / 100) to determine signal.
     """
-    ratio_period = 1.0 + (ratio_return / 100.0)
+    ratio_period = Decimal("1") + (ratio_return / Decimal("100"))
 
     if ratio_period > strong_ow:
         return "STRONG_OW"
-    elif ratio_period > 1.0:
+    elif ratio_period > Decimal("1"):
         return "OVERWEIGHT"
     elif ratio_period >= strong_uw:
-        if abs(ratio_period - 1.0) < 0.0001:
+        if abs(ratio_period - Decimal("1")) < Decimal("0.0001"):
             return "NEUTRAL"
         return "UNDERWEIGHT"
     else:
@@ -111,12 +116,12 @@ def compute_snapshot_for_fund(
     mstar_id: str,
     period: str,
     snapshot_date: date,
-    nav_current: Optional[float],
-    nav_old: Optional[float],
-    nifty_current: Optional[float],
-    nifty_old: Optional[float],
-    strong_ow: float = DEFAULT_STRONG_OW,
-    strong_uw: float = DEFAULT_STRONG_UW,
+    nav_current: Optional[Decimal],
+    nav_old: Optional[Decimal],
+    nifty_current: Optional[Decimal],
+    nifty_old: Optional[Decimal],
+    strong_ow: Decimal = DEFAULT_STRONG_OW,
+    strong_uw: Decimal = DEFAULT_STRONG_UW,
 ) -> dict[str, Any]:
     """
     Compute a complete pulse snapshot for one fund × one period.

@@ -11,7 +11,7 @@ Contains:
 
 from __future__ import annotations
 
-from decimal import Decimal
+from decimal import Decimal, ROUND_HALF_UP
 from typing import Any, Optional
 
 import structlog
@@ -30,13 +30,10 @@ logger = structlog.get_logger(__name__)
 
 
 def orm_to_dict(obj: Any) -> dict[str, Any]:
-    """Convert an SQLAlchemy ORM instance to a plain dict (Decimal -> float)."""
+    """Convert an SQLAlchemy ORM instance to a plain dict (preserves Decimal types)."""
     result: dict[str, Any] = {}
     for column in obj.__table__.columns:
-        val = getattr(obj, column.name)
-        if isinstance(val, Decimal):
-            val = float(val)
-        result[column.name] = val
+        result[column.name] = getattr(obj, column.name)
     return result
 
 
@@ -146,7 +143,7 @@ class ScoringDataLoader:
         for row in result.scalars().all():
             exposures.setdefault(row.mstar_id, []).append({
                 "sector_name": row.sector_name,
-                "exposure_pct": float(row.exposure_pct) if row.exposure_pct is not None else 0.0,
+                "exposure_pct": row.exposure_pct if row.exposure_pct is not None else Decimal("0"),
                 "month_end_date": row.month_end_date,
             })
 
@@ -166,7 +163,7 @@ class ScoringDataLoader:
             {
                 "sector_name": row.sector_name,
                 "signal": row.signal,
-                "signal_weight": float(row.signal_weight) if row.signal_weight is not None else 0.0,
+                "signal_weight": row.signal_weight if row.signal_weight is not None else Decimal("0"),
                 "confidence": row.confidence,
                 "effective_date": row.effective_date,
             }
@@ -189,24 +186,24 @@ class ScoringDataLoader:
             for row in result.scalars().all()
         }
 
-    async def load_old_qfs_values(self, fund_ids: list[str]) -> dict[str, Optional[float]]:
+    async def load_old_qfs_values(self, fund_ids: list[str]) -> dict[str, Optional[Decimal]]:
         """Load previous QFS scores for audit delta tracking."""
         if not fund_ids:
             return {}
         records = await self.score_repo.get_latest_qfs_by_mstar_ids(fund_ids)
-        old_values: dict[str, Optional[float]] = {mid: None for mid in fund_ids}
+        old_values: dict[str, Optional[Decimal]] = {mid: None for mid in fund_ids}
         for rec in records:
-            old_values[rec.mstar_id] = float(rec.qfs) if rec.qfs is not None else None
+            old_values[rec.mstar_id] = rec.qfs if rec.qfs is not None else None
         return old_values
 
-    async def load_old_fsas_values(self, fund_ids: list[str]) -> dict[str, Optional[float]]:
+    async def load_old_fsas_values(self, fund_ids: list[str]) -> dict[str, Optional[Decimal]]:
         """Load previous FSAS scores for audit delta tracking."""
         if not fund_ids:
             return {}
         records = await self.score_repo.get_latest_fsas_by_mstar_ids(fund_ids)
-        old_values: dict[str, Optional[float]] = {mid: None for mid in fund_ids}
+        old_values: dict[str, Optional[Decimal]] = {mid: None for mid in fund_ids}
         for rec in records:
-            old_values[rec.mstar_id] = float(rec.fsas) if rec.fsas is not None else None
+            old_values[rec.mstar_id] = rec.fsas if rec.fsas is not None else None
         return old_values
 
     async def load_engine_config(self, config_key: str) -> Optional[dict]:
@@ -218,7 +215,7 @@ class ScoringDataLoader:
         row = result.scalar_one_or_none()
         return row if row is not None else None
 
-    async def load_nifty_returns(self) -> Optional[dict[str, float]]:
+    async def load_nifty_returns(self) -> Optional[dict[str, Decimal]]:
         """
         Load Nifty 50 returns for QFS excess_return computation.
         Delegates to PulseDataService.get_nifty_returns() which computes
@@ -254,7 +251,7 @@ class ScoringDataLoader:
     async def create_audit_logs(
         self,
         results: list[dict[str, Any]],
-        old_values_by_fund: dict[str, Optional[float]],
+        old_values_by_fund: dict[str, Optional[Decimal]],
         trigger_event: str,
         computation_type: str,
         score_key: str,
@@ -266,7 +263,7 @@ class ScoringDataLoader:
             new_value = result[score_key]
             old_value = old_values_by_fund.get(mstar_id)
 
-            if old_value is None or abs(float(new_value) - float(old_value)) > 0.001:
+            if old_value is None or abs(Decimal(str(new_value)) - Decimal(str(old_value))) > Decimal("0.001"):
                 await self.score_repo.create_audit_log({
                     "mstar_id": mstar_id,
                     "computation_type": computation_type,

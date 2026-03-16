@@ -8,6 +8,7 @@ Provides bulk upsert, filtered queries, and category signal aggregation.
 from __future__ import annotations
 
 from datetime import date
+from decimal import Decimal
 from typing import Any, Optional
 
 import structlog
@@ -173,20 +174,20 @@ class PulseSnapshotRepository(BaseRepository[MFPulseSnapshot]):
                 categories[cat] = {
                     "category_name": cat,
                     "fund_count": 0,
-                    "avg_ratio_return": 0.0,
+                    "avg_ratio_return": Decimal("0"),
                     "signals": {},
-                    "_rr_sum": 0.0,
+                    "_rr_sum": Decimal("0"),
                 }
             entry = categories[cat]
             entry["signals"][row.signal or "UNKNOWN"] = row.cnt
             entry["fund_count"] += row.cnt
-            entry["_rr_sum"] += float(row.avg_rr or 0) * row.cnt
+            entry["_rr_sum"] += (row.avg_rr or Decimal("0")) * row.cnt
 
         # Compute weighted average ratio return
         summaries: list[dict[str, Any]] = []
         for cat_data in categories.values():
             fc = cat_data["fund_count"]
-            cat_data["avg_ratio_return"] = round(cat_data["_rr_sum"] / fc, 4) if fc > 0 else 0.0
+            cat_data["avg_ratio_return"] = (cat_data["_rr_sum"] / fc).quantize(Decimal("0.0001")) if fc > 0 else Decimal("0")
             del cat_data["_rr_sum"]
             summaries.append(cat_data)
 

@@ -65,7 +65,7 @@ class BenchmarkHistoryRepository(BaseRepository[BenchmarkHistory]):
         row = result.first()
         if row is None:
             return None
-        return {"price_date": row.price_date, "close_price": float(row.close_price)}
+        return {"price_date": row.price_date, "close_price": row.close_price}
 
     async def get_price_series(
         self, benchmark: str, from_date: date, to_date: date,
@@ -81,7 +81,7 @@ class BenchmarkHistoryRepository(BaseRepository[BenchmarkHistory]):
             .order_by(BenchmarkHistory.price_date)
         )
         return [
-            {"price_date": row.price_date, "close_price": float(row.close_price)}
+            {"price_date": row.price_date, "close_price": row.close_price}
             for row in result.all()
         ]
 
@@ -96,7 +96,7 @@ class BenchmarkHistoryRepository(BaseRepository[BenchmarkHistory]):
         row = result.first()
         if row is None:
             return None
-        return {"price_date": row.price_date, "close_price": float(row.close_price)}
+        return {"price_date": row.price_date, "close_price": row.close_price}
 
     async def get_data_coverage(self, benchmark: str = "NIFTY_50") -> dict[str, Any]:
         """Return coverage stats for a benchmark."""

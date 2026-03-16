@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import asyncio
 from datetime import date, datetime, timedelta
+from decimal import Decimal, ROUND_HALF_UP
 from typing import Any, Optional
 
 import structlog
@@ -71,7 +72,7 @@ class NavFetcherService:
                 records.append({
                     "benchmark_name": benchmark,
                     "price_date": price_date,
-                    "close_price": round(float(close_price), 4),
+                    "close_price": Decimal(str(close_price)).quantize(Decimal("0.0001"), rounding=ROUND_HALF_UP),
                     "source": "yfinance",
                 })
 
@@ -210,7 +211,7 @@ class NavFetcherService:
                 if not nav_str or not date_str or nav_str == "N/A":
                     continue
 
-                nav_val = float(nav_str)
+                nav_val = Decimal(nav_str)
                 # mftool date format: DD-MM-YYYY
                 nav_date = datetime.strptime(date_str, "%d-%m-%Y").date()
 
@@ -407,10 +408,10 @@ class NavFetcherService:
                 continue
 
             try:
-                nav_val = float(nav_str)
+                nav_val = Decimal(nav_str)
                 nav_date = datetime.strptime(date_str, "%d-%b-%Y").date()
                 nav_lookup[scheme_code] = {"nav": nav_val, "nav_date": nav_date}
-            except (ValueError, TypeError):
+            except (ValueError, TypeError, Exception):
                 continue
 
         logger.info("amfi_bulk_nav_fetch_complete", schemes_parsed=len(nav_lookup))

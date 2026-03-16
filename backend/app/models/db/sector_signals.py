@@ -13,6 +13,7 @@ Signal weights map to numeric values:
 from __future__ import annotations
 import uuid
 from datetime import date, datetime
+from decimal import Decimal
 from typing import Optional
 
 from sqlalchemy import Boolean, Date, DateTime, Index, Numeric, String, Text, func
@@ -22,12 +23,12 @@ from sqlalchemy.orm import Mapped, mapped_column
 from app.core.database import Base
 
 # Signal → weight mapping (used by FSAS engine, stored here for reference)
-SIGNAL_WEIGHTS: dict[str, float] = {
-    "OVERWEIGHT": 1.0,
-    "ACCUMULATE": 0.6,
-    "NEUTRAL": 0.1,
-    "UNDERWEIGHT": -0.5,
-    "AVOID": -1.0,
+SIGNAL_WEIGHTS: dict[str, Decimal] = {
+    "OVERWEIGHT": Decimal("1.0"),
+    "ACCUMULATE": Decimal("0.6"),
+    "NEUTRAL": Decimal("0.1"),
+    "UNDERWEIGHT": Decimal("-0.5"),
+    "AVOID": Decimal("-1.0"),
 }
 
 

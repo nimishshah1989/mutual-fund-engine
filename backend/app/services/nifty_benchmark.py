@@ -14,6 +14,7 @@ for the benchmark index (F00000VBPN).
 from __future__ import annotations
 
 from datetime import date, datetime, timezone
+from decimal import Decimal, ROUND_HALF_UP
 from typing import Any
 
 import structlog
@@ -36,18 +37,18 @@ logger = structlog.get_logger(__name__)
 #   Healthcare         = Healthcare (3.30) + Healthcare Services (1.08)
 #   Utilities          = Power (3.31)
 #   Real Estate        = 0.00 (none in NIFTY 50)
-NIFTY50_SECTOR_WEIGHTS: dict[str, float] = {
-    "Financial Services": 29.08,
-    "Consumer Cyclical": 12.95,
-    "Energy": 12.90,
-    "Technology": 11.02,
-    "Industrials": 9.91,
-    "Consumer Defensive": 5.87,
-    "Communication Services": 5.44,
-    "Basic Materials": 5.13,
-    "Healthcare": 4.38,
-    "Utilities": 3.31,
-    "Real Estate": 0.00,
+NIFTY50_SECTOR_WEIGHTS: dict[str, Decimal] = {
+    "Financial Services": Decimal("29.08"),
+    "Consumer Cyclical": Decimal("12.95"),
+    "Energy": Decimal("12.90"),
+    "Technology": Decimal("11.02"),
+    "Industrials": Decimal("9.91"),
+    "Consumer Defensive": Decimal("5.87"),
+    "Communication Services": Decimal("5.44"),
+    "Basic Materials": Decimal("5.13"),
+    "Healthcare": Decimal("4.38"),
+    "Utilities": Decimal("3.31"),
+    "Real Estate": Decimal("0.00"),
 }
 
 
@@ -88,7 +89,7 @@ async def seed_nifty50_weights(
         "nifty50_seed_complete",
         benchmark=benchmark_name,
         sectors=len(records),
-        total_weight=round(total_weight, 2),
+        total_weight=total_weight.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP),
         rows_upserted=rows_affected,
     )
 
@@ -97,7 +98,7 @@ async def seed_nifty50_weights(
         "benchmark_name": benchmark_name,
         "benchmark_mstar_id": benchmark_mstar_id,
         "sector_count": len(records),
-        "total_weight_pct": round(total_weight, 2),
+        "total_weight_pct": total_weight.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP),
         "rows_upserted": rows_affected,
         "source": "nse_nifty50_manual",
         "fetched_at": now.isoformat(),

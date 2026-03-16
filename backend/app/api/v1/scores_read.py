@@ -11,6 +11,7 @@ Computation endpoints (POST /compute, GET /categories) are in scores.py.
 
 
 import re
+from decimal import Decimal
 from typing import Any, Optional
 
 import structlog
@@ -39,9 +40,13 @@ logger = structlog.get_logger(__name__)
 router = APIRouter()
 
 
-def _safe_float(val: Any) -> Optional[float]:
-    """Convert to float if not None."""
-    return float(val) if val is not None else None
+def _safe_decimal(val: Any) -> Optional[Decimal]:
+    """Convert to Decimal if not None. Preserves DB Decimal values."""
+    if val is None:
+        return None
+    if isinstance(val, Decimal):
+        return val
+    return Decimal(str(val))
 
 
 @router.get(
@@ -102,13 +107,13 @@ async def list_scores(
                 "fund_name": fund_info.fund_name if fund_info else None,
                 "category_name": fund_info.category_name if fund_info else None,
                 "computed_date": row.computed_date,
-                "qfs": _safe_float(row.qfs) or 0.0,
-                "wfs_raw": _safe_float(row.wfs_raw),
-                "score_1y": _safe_float(row.score_1y),
-                "score_3y": _safe_float(row.score_3y),
-                "score_5y": _safe_float(row.score_5y),
-                "score_10y": _safe_float(row.score_10y),
-                "data_completeness_pct": _safe_float(row.data_completeness_pct),
+                "qfs": _safe_decimal(row.qfs) or Decimal("0"),
+                "wfs_raw": _safe_decimal(row.wfs_raw),
+                "score_1y": _safe_decimal(row.score_1y),
+                "score_3y": _safe_decimal(row.score_3y),
+                "score_5y": _safe_decimal(row.score_5y),
+                "score_10y": _safe_decimal(row.score_10y),
+                "data_completeness_pct": _safe_decimal(row.data_completeness_pct),
                 "available_horizons": row.available_horizons,
                 "category_universe_size": row.category_universe_size,
                 "engine_version": row.engine_version,
@@ -118,11 +123,11 @@ async def list_scores(
                 item_data["tier"] = rec.tier
                 item_data["action"] = rec.action
                 item_data["qfs_rank"] = rec.qfs_rank
-                item_data["category_rank_pct"] = _safe_float(rec.category_rank_pct)
+                item_data["category_rank_pct"] = _safe_decimal(rec.category_rank_pct)
                 # v3 matrix fields
-                item_data["fm_score"] = _safe_float(rec.fm_score)
-                item_data["fm_score_percentile"] = _safe_float(rec.fm_score_percentile)
-                item_data["qfs_percentile"] = _safe_float(rec.qfs_percentile)
+                item_data["fm_score"] = _safe_decimal(rec.fm_score)
+                item_data["fm_score_percentile"] = _safe_decimal(rec.fm_score_percentile)
+                item_data["qfs_percentile"] = _safe_decimal(rec.qfs_percentile)
                 item_data["matrix_position"] = rec.matrix_position
                 # Override visibility
                 item_data["override_applied"] = rec.override_applied
@@ -177,18 +182,18 @@ async def list_shortlist(
             avoid_exposure_pct = None
             if fsas is not None and fsas.sector_contributions:
                 alignment_summary = fsas_engine.get_alignment_summary(fsas.sector_contributions)
-                avoid_exposure_pct = _safe_float(fsas.avoid_exposure_pct)
+                avoid_exposure_pct = _safe_decimal(fsas.avoid_exposure_pct)
 
             items.append(ShortlistItem(
                 mstar_id=record.mstar_id,
                 fund_name=fund_lookup.get(record.mstar_id),
                 category_name=record.category_name,
-                qfs_score=float(record.qfs_score) if record.qfs_score else 0.0,
+                qfs_score=record.qfs_score if record.qfs_score else Decimal("0"),
                 qfs_rank=record.qfs_rank,
                 total_in_category=record.total_in_category,
                 shortlist_reason=record.shortlist_reason,
                 computed_date=record.computed_date,
-                fsas=_safe_float(rec.fsas) if rec else None,
+                fsas=_safe_decimal(rec.fsas) if rec else None,
                 tier=rec.tier if rec else None,
                 action=rec.action if rec else None,
                 avoid_exposure_pct=avoid_exposure_pct,

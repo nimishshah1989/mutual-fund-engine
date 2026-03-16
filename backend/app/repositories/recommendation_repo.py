@@ -8,6 +8,7 @@ Repository for the fund_recommendation table. Handles upsert
 
 from __future__ import annotations
 
+from decimal import Decimal
 from typing import Optional
 
 from sqlalchemy import func, select
@@ -164,8 +165,8 @@ class RecommendationRepository(BaseRepository[FundRecommendation]):
                 "tier": tier,
                 "action": action,
                 "fund_count": row.fund_count,
-                "avg_qfs": float(row.avg_qfs) if row.avg_qfs else 0.0,
-                "avg_fms": float(row.avg_fms) if row.avg_fms else 0.0,
+                "avg_qfs": row.avg_qfs if row.avg_qfs else Decimal("0"),
+                "avg_fms": row.avg_fms if row.avg_fms else Decimal("0"),
             })
 
         # Backfill empty cells so frontend always gets all 9 positions
@@ -179,8 +180,8 @@ class RecommendationRepository(BaseRepository[FundRecommendation]):
                     "tier": tier,
                     "action": action,
                     "fund_count": 0,
-                    "avg_qfs": 0.0,
-                    "avg_fms": 0.0,
+                    "avg_qfs": Decimal("0"),
+                    "avg_fms": Decimal("0"),
                 })
 
         return rows

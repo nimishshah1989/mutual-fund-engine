@@ -26,6 +26,7 @@ The engine is a pure computation module — no DB I/O.
 
 from __future__ import annotations
 
+from decimal import Decimal
 from typing import Any
 
 import structlog
@@ -47,8 +48,8 @@ MATRIX_CELLS: dict[str, tuple[str, str]] = {
 }
 
 # Default tercile boundaries (configurable via engine_config)
-DEFAULT_LOW_UPPER = 33.33
-DEFAULT_HIGH_LOWER = 66.67
+DEFAULT_LOW_UPPER = Decimal("33.33")
+DEFAULT_HIGH_LOWER = Decimal("66.67")
 
 
 class MatrixEngine:
@@ -56,8 +57,8 @@ class MatrixEngine:
 
     def __init__(
         self,
-        low_upper: float = DEFAULT_LOW_UPPER,
-        high_lower: float = DEFAULT_HIGH_LOWER,
+        low_upper: Decimal = DEFAULT_LOW_UPPER,
+        high_lower: Decimal = DEFAULT_HIGH_LOWER,
     ) -> None:
         """
         Args:
@@ -67,7 +68,7 @@ class MatrixEngine:
         self.low_upper = low_upper
         self.high_lower = high_lower
 
-    def _get_band(self, percentile: float) -> str:
+    def _get_band(self, percentile: Decimal) -> str:
         """Map a percentile (0-100) to a tercile band."""
         if percentile < self.low_upper:
             return "LOW"
@@ -77,8 +78,8 @@ class MatrixEngine:
 
     def classify(
         self,
-        qfs_percentile: float,
-        fms_percentile: float,
+        qfs_percentile: Decimal,
+        fms_percentile: Decimal,
     ) -> dict[str, Any]:
         """
         Classify a fund into the 3x3 matrix.

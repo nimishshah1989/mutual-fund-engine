@@ -16,6 +16,7 @@ Benchmark management: benchmark_service.py (BenchmarkService)
 from __future__ import annotations
 
 from datetime import date
+from decimal import Decimal, ROUND_HALF_UP
 from typing import Any, Optional
 
 import structlog
@@ -58,18 +59,18 @@ class ScoringService:
         """Load matrix tercile thresholds from engine_config if available."""
         config = await self.data_loader.load_engine_config("matrix_thresholds")
         if config and isinstance(config, dict):
-            low_upper = config.get("low_upper", 33.33)
-            high_lower = config.get("high_lower", 66.67)
+            low_upper = Decimal(str(config.get("low_upper", "33.33")))
+            high_lower = Decimal(str(config.get("high_lower", "66.67")))
             self.matrix_engine = MatrixEngine(
-                low_upper=float(low_upper),
-                high_lower=float(high_lower),
+                low_upper=low_upper,
+                high_lower=high_lower,
             )
 
     # ===================================================================
     # Benchmark management
     # ===================================================================
 
-    async def ensure_benchmark_weights(self) -> dict[str, float]:
+    async def ensure_benchmark_weights(self) -> dict[str, Decimal]:
         """
         Get benchmark weights, auto-refreshing if stale.
         Reads benchmark_mstar_id and benchmark_name from engine_config.
@@ -233,7 +234,7 @@ class ScoringService:
 
     async def compute_fms_for_all_funds(
         self,
-        benchmark_weights: Optional[dict[str, float]] = None,
+        benchmark_weights: Optional[dict[str, Decimal]] = None,
         trigger_event: str = "manual_compute",
     ) -> dict[str, Any]:
         """Compute FMS for ALL eligible funds (v3 default)."""

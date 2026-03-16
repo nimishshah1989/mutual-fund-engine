@@ -24,11 +24,12 @@ All DB I/O is handled by the scoring_service orchestrator.
 from __future__ import annotations
 
 from datetime import date, timedelta
+from decimal import Decimal, ROUND_HALF_UP
 from typing import Any, Optional
 
 import structlog
 
-from app.engines.base_engine import min_max_normalise
+from app.engines.base_engine import min_max_normalise, to_decimal, decimal_round
 
 logger = structlog.get_logger(__name__)
 
@@ -40,19 +41,19 @@ class FSASEngine:
     """Computes FM Sector Alignment Score for all funds in a batch."""
 
     # Signal -> numeric weight (how the FM views the sector)
-    SIGNAL_WEIGHTS: dict[str, float] = {
-        "OVERWEIGHT": 1.0,
-        "ACCUMULATE": 0.6,
-        "NEUTRAL": 0.1,
-        "UNDERWEIGHT": -0.5,
-        "AVOID": -1.0,
+    SIGNAL_WEIGHTS: dict[str, Decimal] = {
+        "OVERWEIGHT": Decimal("1.0"),
+        "ACCUMULATE": Decimal("0.6"),
+        "NEUTRAL": Decimal("0.1"),
+        "UNDERWEIGHT": Decimal("-0.5"),
+        "AVOID": Decimal("-1.0"),
     }
 
     # Confidence -> multiplier (how sure the FM is about the signal)
-    CONFIDENCE_MULTIPLIERS: dict[str, float] = {
-        "HIGH": 1.3,
-        "MEDIUM": 1.0,
-        "LOW": 0.5,
+    CONFIDENCE_MULTIPLIERS: dict[str, Decimal] = {
+        "HIGH": Decimal("1.3"),
+        "MEDIUM": Decimal("1.0"),
+        "LOW": Decimal("0.5"),
     }
 
     # Holdings older than this are flagged as stale
@@ -62,7 +63,7 @@ class FSASEngine:
         self,
         fund_exposures: dict[str, list[dict[str, Any]]],
         active_signals: list[dict[str, Any]],
-        benchmark_weights: Optional[dict[str, float]] = None,
+        benchmark_weights: Optional[dict[str, Decimal]] = None,
         reference_date: Optional[date] = None,
     ) -> list[dict[str, Any]]:
         """
@@ -114,7 +115,7 @@ class FSASEngine:
 
         # Step 1: Compute raw FMS for each fund
         fund_results: list[dict[str, Any]] = []
-        raw_fsas_values: list[Optional[float]] = []
+        raw_fsas_values: list[Optional[Decimal]] = []
         stale_cutoff = reference_date - timedelta(days=self.STALE_HOLDINGS_DAYS)
 
         for mstar_id, exposures in fund_exposures.items():
@@ -143,15 +144,15 @@ class FSASEngine:
 
         for idx, result in enumerate(fund_results):
             fsas_score = normalised_fsas[idx]
-            result["fsas"] = round(fsas_score, 4) if fsas_score is not None else 0.0
+            result["fsas"] = decimal_round(fsas_score, 4) if fsas_score is not None else Decimal("0")
 
         logger.info(
             "fsas_compute_complete",
             fund_count=len(fund_results),
-            avg_avoid_exposure=round(
-                sum(r["avoid_exposure_pct"] for r in fund_results) / len(fund_results),
+            avg_avoid_exposure=decimal_round(
+                sum(r["avoid_exposure_pct"] for r in fund_results) / Decimal(str(len(fund_results))),
                 2,
-            ) if fund_results else 0.0,
+            ) if fund_results else Decimal("0"),
             stale_count=sum(1 for r in fund_results if r["stale_holdings_flag"]),
         )
 
@@ -162,21 +163,21 @@ class FSASEngine:
         mstar_id: str,
         exposures: list[dict[str, Any]],
         signal_lookup: dict[str, dict[str, Any]],
-        benchmark_weights: dict[str, float],
+        benchmark_weights: dict[str, Decimal],
         use_active_weights: bool,
         fm_signal_date: date,
         reference_date: date,
         stale_cutoff: date,
     ) -> dict[str, Any]:
         """Compute raw FMS and sector contributions for one fund."""
-        raw_fsas = 0.0
-        avoid_exposure_pct = 0.0
+        raw_fsas = Decimal("0")
+        avoid_exposure_pct = Decimal("0")
         sector_contributions: dict[str, dict[str, Any]] = {}
         holdings_date: Optional[date] = None
 
         for exposure in exposures:
             sector_name = exposure["sector_name"]
-            exposure_pct = float(exposure["exposure_pct"])
+            exposure_pct = to_decimal(exposure["exposure_pct"]) or Decimal("0")
 
             if holdings_date is None and exposure.get("month_end_date") is not None:
                 holdings_date = exposure["month_end_date"]
@@ -190,17 +191,17 @@ class FSASEngine:
                 confidence_multiplier = self.CONFIDENCE_MULTIPLIERS["MEDIUM"]
             else:
                 signal = signal_data["signal"]
-                signal_weight = float(signal_data.get(
+                signal_weight = to_decimal(signal_data.get(
                     "signal_weight",
-                    self.SIGNAL_WEIGHTS.get(signal, 0.0),
-                ))
+                    self.SIGNAL_WEIGHTS.get(signal, Decimal("0")),
+                )) or Decimal("0")
                 confidence = signal_data.get("confidence", "MEDIUM")
                 confidence_multiplier = self.CONFIDENCE_MULTIPLIERS.get(
-                    confidence, 1.0
+                    confidence, Decimal("1.0")
                 )
 
             # v2: Active weight = fund_exposure - benchmark_weight
-            benchmark_wt = benchmark_weights.get(sector_name, 0.0)
+            benchmark_wt = benchmark_weights.get(sector_name, Decimal("0"))
             if use_active_weights:
                 active_weight = exposure_pct - benchmark_wt
                 contribution = active_weight * signal_weight * confidence_multiplier
@@ -217,14 +218,14 @@ class FSASEngine:
 
             # Store per-sector breakdown for transparency
             sector_contributions[sector_name] = {
-                "exposure_pct": round(exposure_pct, 4),
-                "benchmark_weight_pct": round(benchmark_wt, 4),
-                "active_weight": round(active_weight, 4),
+                "exposure_pct": decimal_round(exposure_pct, 4),
+                "benchmark_weight_pct": decimal_round(benchmark_wt, 4),
+                "active_weight": decimal_round(active_weight, 4),
                 "signal": signal,
                 "signal_weight": signal_weight,
                 "confidence": confidence,
                 "confidence_multiplier": confidence_multiplier,
-                "contribution": round(contribution, 4),
+                "contribution": decimal_round(contribution, 4),
             }
 
         stale_holdings_flag = False
@@ -235,12 +236,12 @@ class FSASEngine:
             "mstar_id": mstar_id,
             "fm_signal_date": fm_signal_date,
             "holdings_date": holdings_date or reference_date,
-            "raw_fsas": round(raw_fsas, 5),
-            "fsas": 0.0,  # Placeholder — filled after normalization
+            "raw_fsas": decimal_round(raw_fsas, 5),
+            "fsas": Decimal("0"),  # Placeholder — filled after normalization
             "sector_contributions": sector_contributions,
             "stale_holdings_flag": stale_holdings_flag,
             "sector_drift_alerts": None,
-            "avoid_exposure_pct": round(avoid_exposure_pct, 2),
+            "avoid_exposure_pct": decimal_round(avoid_exposure_pct, 2),
             "engine_version": ENGINE_VERSION,
         }
 
@@ -257,12 +258,12 @@ class FSASEngine:
         aligned: list[dict[str, Any]] = []
         misaligned: list[dict[str, Any]] = []
         neutral: list[str] = []
-        avoid_exposure_pct = 0.0
+        avoid_exposure_pct = Decimal("0")
 
         for sector_name, data in sector_contributions.items():
             signal = data.get("signal", "NEUTRAL")
-            exposure_pct = data.get("exposure_pct", 0.0)
-            contribution = data.get("contribution", 0.0)
+            exposure_pct = data.get("exposure_pct", Decimal("0"))
+            contribution = data.get("contribution", Decimal("0"))
             active_weight = data.get("active_weight", exposure_pct)
 
             if signal == "AVOID":
@@ -294,7 +295,7 @@ class FSASEngine:
             "aligned_sectors": aligned,
             "misaligned_sectors": misaligned,
             "neutral_sectors": neutral,
-            "avoid_exposure_pct": round(avoid_exposure_pct, 2),
+            "avoid_exposure_pct": decimal_round(avoid_exposure_pct, 2),
             "top_aligned": aligned[:3],
             "top_misaligned": misaligned[:3],
         }
@@ -311,10 +312,10 @@ class FSASEngine:
             "fm_signal_date": fm_signal_date,
             "holdings_date": reference_date,
             "raw_fsas": None,
-            "fsas": 0.0,
+            "fsas": Decimal("0"),
             "sector_contributions": {},
             "stale_holdings_flag": True,
             "sector_drift_alerts": None,
-            "avoid_exposure_pct": 0.0,
+            "avoid_exposure_pct": Decimal("0"),
             "engine_version": ENGINE_VERSION,
         }

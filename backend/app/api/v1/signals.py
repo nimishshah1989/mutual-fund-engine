@@ -7,6 +7,7 @@ v2: Added bulk update, sectors list, and signal change history.
 
 
 from datetime import date
+from decimal import Decimal
 from typing import Optional
 from uuid import UUID
 
@@ -106,7 +107,7 @@ async def list_sectors(
                     sector_name=sector_name,
                     signal=sig.signal,
                     confidence=sig.confidence,
-                    signal_weight=float(sig.signal_weight) if sig.signal_weight else None,
+                    signal_weight=sig.signal_weight,
                     notes=sig.notes,
                     effective_date=sig.effective_date,
                     updated_by=sig.updated_by,

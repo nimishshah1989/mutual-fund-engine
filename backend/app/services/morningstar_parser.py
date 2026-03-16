@@ -13,6 +13,7 @@ dict. Type conversion is left to the caller via safe_float/safe_int/safe_date.
 
 from __future__ import annotations
 from datetime import date, datetime
+from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from xml.etree.ElementTree import ParseError
 
 from defusedxml.ElementTree import fromstring as safe_fromstring
@@ -71,13 +72,26 @@ def parse_xml_response(xml_text: str) -> dict[str, str]:
     return result
 
 
+def safe_decimal(value: str | None) -> Decimal | None:
+    """Convert string to Decimal, returning None for missing or invalid values."""
+    if value is None or value.strip() == "":
+        return None
+    try:
+        parsed = Decimal(value.strip())
+        # Morningstar sometimes uses extreme sentinel values for missing data
+        if abs(parsed) > Decimal("1E15"):
+            return None
+        return parsed
+    except (InvalidOperation, TypeError):
+        return None
+
+
 def safe_float(value: str | None) -> float | None:
-    """Convert string to float, returning None for missing or invalid values."""
+    """DEPRECATED: Use safe_decimal instead. Kept for non-financial parsing."""
     if value is None or value.strip() == "":
         return None
     try:
         parsed = float(value)
-        # Morningstar sometimes uses extreme sentinel values for missing data
         if abs(parsed) > 1e15:
             return None
         return parsed

@@ -6,6 +6,7 @@ v2: Added bulk update schemas and signal change history.
 """
 
 from datetime import date, datetime
+from decimal import Decimal
 from typing import Optional
 from uuid import UUID
 
@@ -51,7 +52,7 @@ class SignalResponse(BaseModel):
     sector_name: str
     signal: str
     confidence: str
-    signal_weight: float
+    signal_weight: Decimal
     effective_date: date
     updated_by: str
     notes: Optional[str] = None
@@ -117,7 +118,7 @@ class SectorWithSignal(BaseModel):
     sector_name: str
     signal: Optional[str] = None
     confidence: Optional[str] = None
-    signal_weight: Optional[float] = None
+    signal_weight: Optional[Decimal] = None
     notes: Optional[str] = None
     effective_date: Optional[date] = None
     updated_by: Optional[str] = None
