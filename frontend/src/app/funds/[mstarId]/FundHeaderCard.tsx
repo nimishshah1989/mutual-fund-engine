@@ -24,8 +24,8 @@ export default function FundHeaderCard({
   const rec = recommendation;
 
   return (
-    <div className="bg-white rounded-xl border border-slate-200 p-6 mb-6">
-      <div className="flex items-center justify-between">
+    <div className="bg-white rounded-xl border border-slate-200 p-4 md:p-6 mb-6 overflow-hidden">
+      <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
           <h2 className="text-xl font-semibold text-slate-800">
             {fundName ?? mstarId}
@@ -54,7 +54,7 @@ export default function FundHeaderCard({
         </div>
         <div className="text-right">
           <p className="text-xs text-slate-400">Quantitative Fund Score</p>
-          <p className="text-5xl font-bold font-mono text-teal-600">
+          <p className="text-4xl md:text-5xl font-bold font-mono text-teal-600">
             {formatScore(qfs?.qfs)}
           </p>
           <p className="text-sm text-slate-400 font-mono">/100</p>

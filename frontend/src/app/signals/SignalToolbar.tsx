@@ -35,8 +35,8 @@ export default function SignalToolbar({
   return (
     <>
       {/* Updated By + Save button bar */}
-      <div className="flex items-end justify-between gap-4 mb-6">
-        <div className="flex items-end gap-4">
+      <div className="flex flex-wrap items-end justify-between gap-4 mb-6">
+        <div className="flex flex-wrap items-end gap-4">
           <div>
             <label className="text-xs text-slate-500 mb-1 block">
               Updated By <span className="text-red-500">*</span>
@@ -47,7 +47,7 @@ export default function SignalToolbar({
               onChange={(e) => onUpdatedByChange(e.target.value)}
               placeholder="Your name (e.g. Nimish Shah)"
               aria-label="Updated by name"
-              className="w-64 bg-white border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-700 placeholder:text-slate-400 focus:ring-2 focus:ring-teal-500 focus:border-teal-500 outline-none"
+              className="w-full max-w-64 bg-white border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-700 placeholder:text-slate-400 focus:ring-2 focus:ring-teal-500 focus:border-teal-500 outline-none"
             />
           </div>
           {hasChanges && (
