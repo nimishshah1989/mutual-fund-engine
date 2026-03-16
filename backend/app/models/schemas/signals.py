@@ -12,7 +12,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field
 
-from app.models.schemas.common import ConfidenceEnum, SignalEnum
+from app.models.schemas.common import ConfidenceEnum, DecimalFloat, SignalEnum
 
 
 # ---------------------------------------------------------------------------
@@ -52,7 +52,7 @@ class SignalResponse(BaseModel):
     sector_name: str
     signal: str
     confidence: str
-    signal_weight: Decimal
+    signal_weight: DecimalFloat
     effective_date: date
     updated_by: str
     notes: Optional[str] = None
@@ -118,7 +118,7 @@ class SectorWithSignal(BaseModel):
     sector_name: str
     signal: Optional[str] = None
     confidence: Optional[str] = None
-    signal_weight: Optional[Decimal] = None
+    signal_weight: Optional[DecimalFloat] = None
     notes: Optional[str] = None
     effective_date: Optional[date] = None
     updated_by: Optional[str] = None

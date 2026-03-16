@@ -12,11 +12,16 @@ from __future__ import annotations
 
 import enum
 import math
-from typing import Any, Generic, TypeVar
+from decimal import Decimal
+from typing import Annotated, Any, Generic, TypeVar
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, PlainSerializer
 
 T = TypeVar("T")
+
+# Decimal that serializes as float in JSON responses — keeps Decimal precision
+# in Python but outputs numeric values (not strings) for frontend consumption.
+DecimalFloat = Annotated[Decimal, PlainSerializer(lambda x: float(x), return_type=float)]
 
 
 # ---------------------------------------------------------------------------

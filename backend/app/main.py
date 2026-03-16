@@ -13,14 +13,25 @@ Run with:
     uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 """
 
+import json
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
+from decimal import Decimal
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
+
+
+class DecimalEncoder(json.JSONEncoder):
+    """Serialize Decimal as float in JSON responses so frontend .toFixed() works."""
+
+    def default(self, obj: object) -> object:
+        if isinstance(obj, Decimal):
+            return float(obj)
+        return super().default(obj)
 
 from app.api.health import router as health_router
 from app.api.v1.router import v1_router
@@ -81,6 +92,18 @@ def create_app() -> FastAPI:
     """
     settings = get_settings()
 
+    class DecimalJSONResponse(JSONResponse):
+        """JSONResponse that serializes Decimal values as floats."""
+
+        def render(self, content: object) -> bytes:
+            return json.dumps(
+                content,
+                ensure_ascii=False,
+                allow_nan=False,
+                cls=DecimalEncoder,
+                separators=(",", ":"),
+            ).encode("utf-8")
+
     application = FastAPI(
         title="JIP MF Recommendation Engine",
         description=(
@@ -89,6 +112,7 @@ def create_app() -> FastAPI:
         ),
         version=settings.app_version,
         lifespan=lifespan,
+        default_response_class=DecimalJSONResponse,
         docs_url="/docs" if not settings.is_production else None,
         redoc_url="/redoc" if not settings.is_production else None,
     )

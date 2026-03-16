@@ -11,11 +11,13 @@ from typing import Any, Optional
 
 from pydantic import BaseModel, Field
 
+from app.models.schemas.common import DecimalFloat
+
 
 class BenchmarkWeightItem(BaseModel):
     """One sector's weight in the benchmark."""
     sector_name: str = Field(..., description="Morningstar sector name")
-    weight_pct: Decimal = Field(..., description="Sector weight as percentage (0-100)")
+    weight_pct: DecimalFloat = Field(..., description="Sector weight as percentage (0-100)")
     effective_date: date = Field(..., description="Date weights are effective from")
     source: str = Field("morningstar_gssb", description="Data source")
     fetched_at: Optional[str] = Field(None, description="ISO timestamp of last fetch")
@@ -27,7 +29,7 @@ class BenchmarkWeightsResponse(BaseModel):
     benchmark_mstar_id: Optional[str] = Field(None, description="Morningstar ID used")
     sectors: list[BenchmarkWeightItem] = Field(default_factory=list)
     sector_count: int = Field(0)
-    total_weight_pct: Decimal = Field(Decimal("0"), description="Sum of all sector weights")
+    total_weight_pct: DecimalFloat = Field(Decimal("0"), description="Sum of all sector weights")
     last_fetched: Optional[str] = Field(None, description="ISO timestamp of most recent fetch")
 
 
@@ -37,7 +39,7 @@ class BenchmarkRefreshResponse(BaseModel):
     benchmark_name: Optional[str] = None
     benchmark_mstar_id: Optional[str] = None
     sector_count: int = 0
-    total_weight_pct: Decimal = Decimal("0")
+    total_weight_pct: DecimalFloat = Decimal("0")
     rows_upserted: int = 0
     fetched_at: Optional[str] = None
     reason: Optional[str] = None
@@ -52,8 +54,8 @@ class MatrixCellSummary(BaseModel):
     tier: str = Field(..., description="Tier for this cell")
     action: str = Field(..., description="Action for this cell")
     fund_count: int = Field(0, description="Number of funds in this cell")
-    avg_qfs: Decimal = Field(Decimal("0"), description="Average QFS of funds in cell")
-    avg_fms: Decimal = Field(Decimal("0"), description="Average FMS of funds in cell")
+    avg_qfs: DecimalFloat = Field(Decimal("0"), description="Average QFS of funds in cell")
+    avg_fms: DecimalFloat = Field(Decimal("0"), description="Average FMS of funds in cell")
 
 
 class MatrixSummaryResponse(BaseModel):
